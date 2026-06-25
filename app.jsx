@@ -101,6 +101,8 @@ export default function App() {
     const [activeTab, setActiveTab] = useState("dashboard");
     const [theme, setTheme] = useState(() => localStorage.getItem("mk_theme") || "dark");
     const [globalSearch, setGlobalSearch] = useState("");
+    const [avatarPreview, setAvatarPreview] = useState(null); // base64 preview for register
+    const [authError, setAuthError] = useState(""); // inline error messages
 
     // --- APPLICATION DATA STATE ---
     const [transactions, setTransactions] = useState([]);
@@ -127,6 +129,11 @@ export default function App() {
     // --- PAGINATION STATE ---
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
+
+    // --- FILTER STATE (replaces DOM queries) ---
+    const [filterType, setFilterType] = useState("all");
+    const [filterCategory, setFilterCategory] = useState("all");
+    const [filterDate, setFilterDate] = useState("");
 
     // --- EFFECT: Theme configuration ---
     useEffect(() => {
@@ -170,6 +177,7 @@ export default function App() {
 
     const handleLoginSubmit = async (e) => {
         e.preventDefault();
+        setAuthError("");
         const username = e.target.username.value.trim().toLowerCase();
         const password = e.target.password.value;
 
@@ -182,7 +190,7 @@ export default function App() {
             const data = await res.json();
             
             if (!res.ok) {
-                alert(data.error || "Login gagal.");
+                setAuthError(data.error || "Login gagal. Periksa username dan password.");
                 return;
             }
 
@@ -190,17 +198,25 @@ export default function App() {
             localStorage.setItem("mk_user", JSON.stringify(data));
             setActiveTab("dashboard");
         } catch (err) {
-            alert("Terjadi kesalahan koneksi server.");
+            setAuthError("Tidak dapat terhubung ke server. Pastikan backend berjalan.");
         }
     };
 
     const handleRegisterSubmit = async (e) => {
         e.preventDefault();
+        setAuthError("");
         const fullname = e.target.fullname.value.trim();
         const username = e.target.username.value.trim().toLowerCase();
         const univ = e.target.univ.value.trim();
         const password = e.target.password.value;
-        const avatar = e.target.avatar.value;
+        
+        // avatar: gunakan preview base64, atau fallback ke avatar default
+        const avatar = avatarPreview || "https://ui-avatars.com/api/?name=" + encodeURIComponent(fullname) + "&background=6366f1&color=fff&size=120";
+
+        if (password.length < 6) {
+            setAuthError("Password minimal 6 karakter.");
+            return;
+        }
 
         try {
             const res = await fetch('/api/auth/register', {
@@ -211,7 +227,7 @@ export default function App() {
             const data = await res.json();
 
             if (!res.ok) {
-                alert(data.error || "Pendaftaran gagal.");
+                setAuthError(data.error || "Pendaftaran gagal.");
                 return;
             }
 
@@ -219,8 +235,28 @@ export default function App() {
             localStorage.setItem("mk_user", JSON.stringify(data));
             setActiveTab("dashboard");
         } catch (err) {
-            alert("Terjadi kesalahan koneksi server.");
+            setAuthError("Tidak dapat terhubung ke server. Pastikan backend berjalan.");
         }
+    };
+
+    // Handles photo upload from gallery → convert to base64
+    const handleAvatarFileChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+            setAuthError("File harus berupa gambar (JPG, PNG, dll).");
+            return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+            setAuthError("Ukuran foto maksimal 2MB.");
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            setAvatarPreview(ev.target.result);
+            setAuthError("");
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleLogout = () => {
@@ -523,7 +559,7 @@ export default function App() {
     if (!user) {
         return (
             <div className="auth-container">
-                <div className="auth-box">
+                <div className={`auth-box ${authMode === "register" ? "auth-box-tall" : ""}`}>
                     <div className="auth-brand-panel">
                         <div className="brand-panel-glow"></div>
                         <div className="brand-logo">
@@ -551,24 +587,25 @@ export default function App() {
                                 <form onSubmit={handleLoginSubmit}>
                                     <div className="form-group">
                                         <label htmlFor="login-username">Username</label>
-                                        <input type="text" name="username" placeholder="Masukkan username Anda" required />
+                                        <input type="text" name="username" placeholder="Masukkan username Anda" required autoComplete="username" />
                                     </div>
                                     <div className="form-group">
                                         <label htmlFor="login-password">Password</label>
-                                        <input type="password" name="password" placeholder="••••••••" required />
+                                        <input type="password" name="password" placeholder="••••••••" required autoComplete="current-password" />
                                     </div>
+                                    {authError && <div className="auth-error-msg"><AlertTriangle size={14} /> {authError}</div>}
                                     <div className="form-actions-inline">
                                         <label className="checkbox-container">
                                             <input type="checkbox" defaultChecked />
                                             <span className="checkmark"></span>
                                             Ingat Saya
                                         </label>
-                                        <span style={{ cursor: 'pointer' }} className="forgot-link" onClick={() => alert("Gunakan username: rizky, password: password")}>Lupa Password?</span>
+                                        <span style={{ cursor: 'pointer' }} className="forgot-link" onClick={() => setAuthError("Gunakan username: rizky, password: password")}>Lupa Password?</span>
                                     </div>
                                     <button type="submit" className="btn btn-primary btn-block">Masuk Sekarang</button>
                                 </form>
                                 <div className="form-footer">
-                                    <p>Belum punya akun? <span style={{ cursor: 'pointer', color: 'var(--accent)', fontWeight: 600 }} onClick={() => setAuthMode("register")}>Daftar Akun Baru</span></p>
+                                    <p>Belum punya akun? <span style={{ cursor: 'pointer', color: 'var(--accent)', fontWeight: 600 }} onClick={() => { setAuthMode("register"); setAuthError(""); setAvatarPreview(null); }}>Daftar Akun Baru</span></p>
                                 </div>
                             </div>
                         ) : (
@@ -585,7 +622,7 @@ export default function App() {
                                     <div className="form-row">
                                         <div className="form-group">
                                             <label>Username</label>
-                                            <input type="text" name="username" placeholder="budisantoso" required />
+                                            <input type="text" name="username" placeholder="budisantoso" required autoComplete="username" />
                                         </div>
                                         <div className="form-group">
                                             <label>Nama Universitas</label>
@@ -594,35 +631,49 @@ export default function App() {
                                     </div>
                                     <div className="form-group">
                                         <label>Password</label>
-                                        <input type="password" name="password" placeholder="Minimal 6 karakter" minLength="6" required />
+                                        <input type="password" name="password" placeholder="Minimal 6 karakter" minLength="6" required autoComplete="new-password" />
                                     </div>
                                     
+                                    {/* FOTO PROFIL — Upload dari Galeri */}
                                     <div className="form-group">
-                                        <label>Pilih Foto Profil Mahasiswa</label>
-                                        <div className="avatar-select-grid">
-                                            {[
-                                                "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120",
-                                                "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120",
-                                                "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120",
-                                                "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=120",
-                                                "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=120",
-                                                "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=120"
-                                            ].map((url, i) => (
-                                                <label key={i} className="avatar-option">
-                                                    <input type="radio" name="avatar" value={url} defaultChecked={i === 0} style={{ display: 'none' }} />
-                                                    <img src={url} alt={`Avatar ${i+1}`} onClick={(e) => {
-                                                        document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('active'));
-                                                        e.currentTarget.parentElement.classList.add('active');
-                                                    }} className={i === 0 ? "active-border" : ""} />
+                                        <label>Foto Profil</label>
+                                        <div className="avatar-upload-area">
+                                            <div className="avatar-upload-preview">
+                                                {avatarPreview ? (
+                                                    <img src={avatarPreview} alt="Preview foto profil" />
+                                                ) : (
+                                                    <div className="avatar-upload-placeholder">
+                                                        <User size={32} />
+                                                        <span>Belum ada foto</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="avatar-upload-controls">
+                                                <label className="btn btn-secondary btn-sm avatar-file-btn" htmlFor="avatar-file-input">
+                                                    <User size={14} /> Pilih dari Galeri
                                                 </label>
-                                            ))}
+                                                <input 
+                                                    id="avatar-file-input"
+                                                    type="file" 
+                                                    accept="image/*"
+                                                    onChange={handleAvatarFileChange}
+                                                    style={{ display: 'none' }}
+                                                />
+                                                {avatarPreview && (
+                                                    <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => setAvatarPreview(null)}>
+                                                        <X size={14} /> Hapus Foto
+                                                    </button>
+                                                )}
+                                                <p className="avatar-upload-hint">JPG, PNG, GIF — maks. 2MB. Jika tidak dipilih, foto default akan dibuat otomatis.</p>
+                                            </div>
                                         </div>
                                     </div>
-                                    
+
+                                    {authError && <div className="auth-error-msg"><AlertTriangle size={14} /> {authError}</div>}
                                     <button type="submit" className="btn btn-primary btn-block">Daftar Akun</button>
                                 </form>
                                 <div className="form-footer">
-                                    <p>Sudah punya akun? <span style={{ cursor: 'pointer', color: 'var(--accent)', fontWeight: 600 }} onClick={() => setAuthMode("login")}>Masuk Disini</span></p>
+                                    <p>Sudah punya akun? <span style={{ cursor: 'pointer', color: 'var(--accent)', fontWeight: 600 }} onClick={() => { setAuthMode("login"); setAuthError(""); }}>Masuk Disini</span></p>
                                 </div>
                             </div>
                         )}
@@ -902,14 +953,14 @@ export default function App() {
                             <div className="page-actions-bar">
                                 <div className="filters">
                                     <div className="select-wrapper">
-                                        <select id="filter-type" onChange={() => setCurrentPage(1)}>
+                                        <select id="filter-type" value={filterType} onChange={(e) => { setFilterType(e.target.value); setCurrentPage(1); }}>
                                             <option value="all">Semua Tipe</option>
                                             <option value="pemasukan">Pemasukan</option>
                                             <option value="pengeluaran">Pengeluaran</option>
                                         </select>
                                     </div>
                                     <div className="select-wrapper">
-                                        <select id="filter-category" onChange={() => setCurrentPage(1)}>
+                                        <select id="filter-category" value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); setCurrentPage(1); }}>
                                             <option value="all">Semua Kategori</option>
                                             <option value="Makanan">Makanan & Minuman</option>
                                             <option value="Transportasi">Transportasi</option>
@@ -919,11 +970,11 @@ export default function App() {
                                             <option value="Lainnya">Lain-lain</option>
                                         </select>
                                     </div>
-                                    <input type="date" id="filter-date" className="date-input" onChange={() => setCurrentPage(1)} />
+                                    <input type="date" id="filter-date" className="date-input" value={filterDate} onChange={(e) => { setFilterDate(e.target.value); setCurrentPage(1); }} />
                                     <button className="btn btn-secondary btn-sm" onClick={() => {
-                                        document.getElementById("filter-type").value = "all";
-                                        document.getElementById("filter-category").value = "all";
-                                        document.getElementById("filter-date").value = "";
+                                        setFilterType("all");
+                                        setFilterCategory("all");
+                                        setFilterDate("");
                                         setGlobalSearch("");
                                         setCurrentPage(1);
                                     }}><RotateCcw size={14} /> Reset</button>
@@ -946,14 +997,10 @@ export default function App() {
                                         </thead>
                                         <tbody>
                                             {(() => {
-                                                const typeVal = document.getElementById("filter-type")?.value || "all";
-                                                const catVal = document.getElementById("filter-category")?.value || "all";
-                                                const dateVal = document.getElementById("filter-date")?.value || "";
-                                                
                                                 const filtered = transactions.filter(t => {
-                                                    const matchesType = typeVal === "all" || t.type === typeVal;
-                                                    const matchesCat = catVal === "all" || t.category === catVal;
-                                                    const matchesDate = !dateVal || t.date === dateVal;
+                                                    const matchesType = filterType === "all" || t.type === filterType;
+                                                    const matchesCat = filterCategory === "all" || t.category === filterCategory;
+                                                    const matchesDate = !filterDate || t.date === filterDate;
                                                     const matchesSearch = t.title.toLowerCase().includes(globalSearch.toLowerCase()) ||
                                                                           t.category.toLowerCase().includes(globalSearch.toLowerCase());
                                                     return matchesType && matchesCat && matchesDate && matchesSearch;

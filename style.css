@@ -1651,6 +1651,7 @@ label {
 input[type="text"],
 input[type="number"],
 input[type="date"],
+input[type="password"],
 select {
     width: 100%;
     padding: 12px 16px;
@@ -1661,11 +1662,13 @@ select {
     font-size: 14px;
     outline: none;
     transition: all var(--transition-fast);
+    font-family: var(--font-primary);
 }
 
 input[type="text"]:focus,
 input[type="number"]:focus,
 input[type="date"]:focus,
+input[type="password"]:focus,
 select:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);
@@ -1876,11 +1879,18 @@ select:focus {
     border-radius: var(--border-radius-lg);
     width: 960px;
     max-width: 100%;
+    max-height: 90vh;
     height: 620px;
     display: flex;
     overflow: hidden;
     box-shadow: var(--shadow-lg);
     animation: fadeIn var(--transition-normal);
+    transition: height var(--transition-normal);
+}
+
+.auth-box.auth-box-tall {
+    height: auto;
+    max-height: 90vh;
 }
 
 /* Brand Panel (Left Side) */
@@ -1894,6 +1904,8 @@ select:focus {
     color: #ffffff;
     position: relative;
     overflow: hidden;
+    flex-shrink: 0;
+    align-self: stretch;
 }
 
 .auth-brand-panel::before {
@@ -1977,8 +1989,9 @@ select:focus {
     width: 58%;
     padding: 44px 50px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     position: relative;
+    overflow-y: auto;
 }
 
 .auth-form-view {
@@ -2119,7 +2132,97 @@ select:focus {
     text-decoration: underline;
 }
 
-/* Avatar Picker selection */
+/* Auth error inline message */
+.auth-error-msg {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--rose-glow);
+    border: 1px solid var(--rose);
+    color: var(--rose);
+    border-radius: var(--border-radius-sm);
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 16px;
+}
+
+/* Auth box tall variant for register */
+.auth-box-tall {
+    height: auto !important;
+    min-height: 620px;
+}
+
+/* Avatar upload area */
+.avatar-upload-area {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 16px;
+    background-color: var(--bg-input);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius-md);
+    transition: border-color var(--transition-fast);
+    margin-top: 6px;
+}
+
+.avatar-upload-area:hover {
+    border-color: var(--accent);
+}
+
+.avatar-upload-preview {
+    width: 80px;
+    height: 80px;
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    border: 2px solid var(--border-color);
+    flex-shrink: 0;
+    background-color: var(--bg-card);
+}
+
+.avatar-upload-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.avatar-upload-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--text-muted);
+    font-size: 10px;
+    text-align: center;
+}
+
+.avatar-upload-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-grow: 1;
+}
+
+.avatar-file-btn {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+}
+
+.avatar-upload-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Avatar Picker selection (legacy — kept for reference, now replaced) */
 .avatar-select-grid {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
@@ -2188,8 +2291,17 @@ select:focus {
         padding: 30px 24px;
     }
     
+    .avatar-upload-area {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .avatar-upload-controls {
+        align-items: center;
+        text-align: center;
+    }
+
     .avatar-select-grid {
         grid-template-columns: repeat(3, 1fr);
     }
 }
-
