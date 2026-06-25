@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MajuKeuangan - Sistem Manajemen Keuangan Mahasiswa</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+    
+    <!-- ==================== AUTH CONTAINER ==================== -->
+    <div class="auth-container" id="auth-container">
+        <div class="auth-box">
+            <!-- Left Info Panel (Visual brand) -->
+            <div class="auth-brand-panel">
+                <div class="brand-panel-glow"></div>
+                <div class="brand-logo">
+                    <div class="logo-icon">
+                        <i data-lucide="wallet-cards"></i>
+                    </div>
+                    <span>Maju<span class="highlight">Keuangan</span></span>
+                </div>
+                <div class="brand-panel-content">
+                    <h2>Kelola Keuangan Kuliahmu dengan Cerdas</h2>
+                    <p>Catat transaksi harian, susun batas anggaran per kategori, kumpulkan celengan impian, dan dapatkan analisis laporan finansial secara otomatis.</p>
+                </div>
+                <div class="brand-panel-footer">
+                    <p>&copy; 2026 MajuKeuangan. Untuk Mahasiswa Indonesia.</p>
+                </div>
+            </div>
+            <!-- Right Forms Panel -->
+            <div class="auth-forms-panel">
+                <!-- LOGIN FORM VIEW -->
+                <div class="auth-form-view active" id="login-view">
+                    <div class="form-header">
+                        <h2>Selamat Datang Kembali!</h2>
+                        <p>Masuk ke akun keuangan mahasiswa Anda untuk melanjutkan.</p>
+                    </div>
+                    <form id="form-login">
+                        <div class="form-group">
+                            <label for="login-username">Username</label>
+                            <input type="text" id="login-username" placeholder="Masukkan username Anda" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="login-password">Password</label>
+                            <input type="password" id="login-password" placeholder="••••••••" required>
+                        </div>
+                        <div class="form-actions-inline">
+                            <label class="checkbox-container">
+                                <input type="checkbox" checked>
+                                <span class="checkmark"></span>
+                                Ingat Saya
+                            </label>
+                            <a href="#" class="forgot-link">Lupa Password?</a>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Masuk Sekarang</button>
+                    </form>
+                    <div class="form-footer">
+                        <p>Belum punya akun? <a href="#" id="link-to-register">Daftar Akun Baru</a></p>
+                    </div>
+                </div>
+                <!-- REGISTER FORM VIEW -->
+                <div class="auth-form-view" id="register-view">
+                    <div class="form-header">
+                        <h2>Mulai Akun Baru</h2>
+                        <p>Buat akun keuangan mahasiswamu hanya dalam beberapa langkah.</p>
+                    </div>
+                    <form id="form-register">
+                        <div class="form-group">
+                            <label for="reg-fullname">Nama Lengkap</label>
+                            <input type="text" id="reg-fullname" placeholder="Contoh: Budi Santoso" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="reg-username">Username</label>
+                                <input type="text" id="reg-username" placeholder="budisantoso" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="reg-univ">Nama Universitas</label>
+                                <input type="text" id="reg-univ" placeholder="Universitas Indonesia" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-password">Password</label>
+                            <input type="password" id="reg-password" placeholder="Minimal 6 karakter" minlength="6" required>
+                        </div>
+                        
+                        <!-- Avatar Selection Grid -->
+                        <div class="form-group">
+                            <label>Pilih Foto Profil Mahasiswa</label>
+                            <div class="avatar-select-grid">
+                                <label class="avatar-option active">
+                                    <input type="radio" name="reg-avatar" value="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120" checked style="display:none;">
+                                    <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120" alt="Avatar 1">
+                                </label>
+                                <label class="avatar-option">
+                                    <input type="radio" name="reg-avatar" value="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120" style="display:none;">
+                                    <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120" alt="Avatar 2">
+                                </label>
+                                <label class="avatar-option">
+                                    <input type="radio" name="reg-avatar" value="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120" style="display:none;">
+                                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120" alt="Avatar 3">
+                                </label>
+                                <label class="avatar-option">
+                                    <input type="radio" name="reg-avatar" value="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=120" style="display:none;">
+                                    <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=120" alt="Avatar 4">
+                                </label>
+                                <label class="avatar-option">
+                                    <input type="radio" name="reg-avatar" value="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=120" style="display:none;">
+                                    <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=120" alt="Avatar 5">
+                                </label>
+                                <label class="avatar-option">
+                                    <input type="radio" name="reg-avatar" value="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=120" style="display:none;">
+                                    <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=120" alt="Avatar 6">
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary btn-block">Daftar Akun</button>
+                    </form>
+                    <div class="form-footer">
+                        <p>Sudah punya akun? <a href="#" id="link-to-login">Masuk Disini</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="app-container" id="main-app-container" style="display: none;">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <i data-lucide="wallet-cards"></i>
+                    </div>
+                    <span class="logo-text">Maju<span class="highlight">Keuangan</span></span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <a href="#" class="menu-item active" data-tab="dashboard">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="menu-item" data-tab="transaksi">
+                    <i data-lucide="arrow-left-right"></i>
+                    <span>Transaksi</span>
+                </a>
+                <a href="#" class="menu-item" data-tab="anggaran">
+                    <i data-lucide="pie-chart"></i>
+                    <span>Anggaran</span>
+                </a>
+                <a href="#" class="menu-item" data-tab="laporan">
+                    <i data-lucide="bar-chart-3"></i>
+                    <span>Laporan</span>
+                </a>
+                <a href="#" class="menu-item" data-tab="tabungan">
+                    <i data-lucide="piggy-bank"></i>
+                    <span>Tabungan</span>
+                </a>
+                <a href="#" class="menu-item" data-tab="notifikasi">
+                    <i data-lucide="bell"></i>
+                    <span>Notifikasi</span>
+                    <span class="badge" id="noti-badge">0</span>
+                </a>
+                <a href="#" class="menu-item logout-menu-btn" id="btn-logout">
+                    <i data-lucide="log-out"></i>
+                    <span>Keluar</span>
+                </a>
+            </nav>
+            
+            <!-- User Profile Section -->
+            <div class="user-profile">
+                <div class="avatar">
+                    <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120" alt="Avatar Mahasiswa" id="user-avatar">
+                </div>
+                <div class="user-info">
+                    <h4 class="user-name" id="user-name">Rizky Fanani</h4>
+                    <p class="user-status">Mahasiswa Aktif</p>
+                    <p class="user-univ" id="user-univ">Universitas Brawijaya</p>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content Area -->
+        <main class="main-content">
+            
+            <!-- Header -->
+            <header class="app-header">
+                <div class="header-left">
+                    <h1 id="page-title">Dashboard</h1>
+                    <p class="current-date" id="current-date">Kamis, 11 Juni 2026</p>
+                </div>
+                <div class="header-right">
+                    <!-- Search Bar -->
+                    <div class="search-box">
+                        <i data-lucide="search"></i>
+                        <input type="text" placeholder="Cari transaksi, tabungan..." id="global-search">
+                    </div>
+                    
+                    <!-- Theme Toggle -->
+                    <button class="theme-toggle-btn" id="theme-toggle" title="Ganti Tema">
+                        <i data-lucide="sun" class="sun-icon"></i>
+                        <i data-lucide="moon" class="moon-icon"></i>
+                    </button>
+                    
+                    <!-- Notification Quick Button -->
+                    <button class="icon-btn noti-btn" id="noti-quick-btn" title="Notifikasi">
+                        <i data-lucide="bell"></i>
+                        <span class="dot" id="noti-dot"></span>
+                    </button>
+                </div>
+            </header>
+            
+            <!-- Content Container (Tabs) -->
+            <div class="content-body">
+                
+                <!-- 1. DASHBOARD PAGE -->
+                <section class="tab-content active" id="dashboard-tab">
+                    <!-- Grid Ringkasan Atas -->
+                    <div class="summary-grid">
+                        <div class="summary-card balance">
+                            <div class="card-glow"></div>
+                            <div class="card-header">
+                                <span>Total Saldo</span>
+                                <div class="card-icon"><i data-lucide="coins"></i></div>
+                            </div>
+                            <h2 class="amount" id="dash-balance">Rp 0</h2>
+                            <div class="card-footer">
+                                <span class="trend up"><i data-lucide="trending-up"></i> +4.2%</span>
+                                <span class="footer-desc">dari bulan lalu</span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card income">
+                            <div class="card-header">
+                                <span>Pemasukan Bulan Ini</span>
+                                <div class="card-icon"><i data-lucide="arrow-down-left"></i></div>
+                            </div>
+                            <h2 class="amount text-emerald" id="dash-income">Rp 0</h2>
+                            <div class="card-footer">
+                                <span class="trend up"><i data-lucide="arrow-up"></i> Uang Saku & Beasiswa</span>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card expense">
+                            <div class="card-header">
+                                <span>Pengeluaran Bulan Ini</span>
+                                <div class="card-icon"><i data-lucide="arrow-up-right"></i></div>
+                            </div>
+                            <h2 class="amount text-rose" id="dash-expense">Rp 0</h2>
+                            <div class="card-footer">
+                                <span class="trend down" id="dash-expense-percentage">0% dari Anggaran</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Dashboard Details Grid -->
+                    <div class="details-grid">
+                        <!-- Left Column (Transactions & Budget progress) -->
+                        <div class="col-left">
+                            <!-- Quick Budget Overview -->
+                            <div class="card dashboard-card">
+                                <div class="card-title-container">
+                                    <h3>Ringkasan Anggaran Kategori</h3>
+                                    <button class="text-btn" data-go-tab="anggaran">Lihat Semua</button>
+                                </div>
+                                <div class="budget-summary-list" id="dash-budget-list">
+                                    <!-- Dynamic content loaded via JS -->
+                                </div>
+                            </div>
+                            
+                            <!-- Recent Transactions -->
+                            <div class="card dashboard-card">
+                                <div class="card-title-container">
+                                    <h3>Transaksi Terbaru</h3>
+                                    <div class="action-buttons">
+                                        <button class="btn btn-secondary btn-sm" id="btn-add-expense-quick"><i data-lucide="plus"></i> Pengeluaran</button>
+                                        <button class="btn btn-primary btn-sm" id="btn-add-income-quick"><i data-lucide="plus"></i> Pemasukan</button>
+                                    </div>
+                                </div>
+                                <div class="table-container">
+                                    <table class="recent-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Deskripsi</th>
+                                                <th>Kategori</th>
+                                                <th>Tanggal</th>
+                                                <th>Jumlah</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="dash-recent-transactions">
+                                            <!-- Dynamic content loaded via JS -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Right Column (Savings, Notifications & Student Tip) -->
+                        <div class="col-right">
+                            <!-- Quick Savings Progress -->
+                            <div class="card dashboard-card">
+                                <div class="card-title-container">
+                                    <h3>Target Celengan (Tabungan)</h3>
+                                    <button class="text-btn" data-go-tab="tabungan">Lihat Detail</button>
+                                </div>
+                                <div class="quick-savings-list" id="dash-savings-list">
+                                    <!-- Dynamic content loaded via JS -->
+                                </div>
+                            </div>
+                            
+                            <!-- Financial Student Tip -->
+                            <div class="card tip-card">
+                                <div class="tip-glow"></div>
+                                <div class="tip-icon"><i data-lucide="lightbulb"></i></div>
+                                <div class="tip-content">
+                                    <h4>Tips Keuangan Mahasiswa</h4>
+                                    <p id="financial-tip">"Selalu prioritaskan kebutuhan kuliah dan kos sebelum menyisihkan untuk hiburan. Buat rasio 50:30:20 untuk Kebutuhan, Keinginan, dan Tabungan."</p>
+                                    <button class="btn-text" id="btn-next-tip">Tips Selanjutnya <i data-lucide="chevron-right"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- 2. TRANSAKSI PAGE -->
+                <section class="tab-content" id="transaksi-tab">
+                    <div class="page-actions-bar">
+                        <div class="filters">
+                            <div class="select-wrapper">
+                                <select id="filter-type">
+                                    <option value="all">Semua Tipe</option>
+                                    <option value="pemasukan">Pemasukan</option>
+                                    <option value="pengeluaran">Pengeluaran</option>
+                                </select>
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="filter-category">
+                                    <option value="all">Semua Kategori</option>
+                                    <option value="Makanan">Makanan & Minuman</option>
+                                    <option value="Transportasi">Transportasi</option>
+                                    <option value="Pendidikan">Kuliah & Buku</option>
+                                    <option value="Kost">Kos & Bulanan</option>
+                                    <option value="Hiburan">Hiburan & Sosialisasi</option>
+                                    <option value="Lainnya">Lain-lain</option>
+                                </select>
+                            </div>
+                            <input type="date" id="filter-date" class="date-input">
+                            <button class="btn btn-secondary btn-sm" id="btn-reset-filters"><i data-lucide="rotate-ccw"></i> Reset</button>
+                        </div>
+                        <button class="btn btn-primary" id="btn-add-transaction"><i data-lucide="plus"></i> Tambah Transaksi</button>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="table-container">
+                            <table class="main-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nama Transaksi</th>
+                                        <th>Tipe</th>
+                                        <th>Kategori</th>
+                                        <th>Tanggal</th>
+                                        <th>Jumlah</th>
+                                        <th class="actions-header">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactions-list-table">
+                                    <!-- Dynamic content loaded via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pagination-footer" id="pagination-container">
+                            <!-- Dynamic navigation for pagination -->
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- 3. ANGGARAN PAGE -->
+                <section class="tab-content" id="anggaran-tab">
+                    <div class="alert alert-info">
+                        <div class="alert-icon"><i data-lucide="info"></i></div>
+                        <div class="alert-content">
+                            <h4>Kelola Anggaran Bulanan</h4>
+                            <p>Tentukan batas maksimum pengeluaran untuk setiap kategori agar tidak mengalami krisis keuangan di akhir bulan. Sistem akan memberikan notifikasi jika pemakaian kategori melebihi 80%.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="budget-grid" id="budget-cards-container">
+                        <!-- Dynamic budget cards -->
+                    </div>
+                </section>
+                
+                <!-- 4. LAPORAN PAGE -->
+                <section class="tab-content" id="laporan-tab">
+                    <div class="reports-grid">
+                        <div class="card report-card span-2">
+                            <div class="card-header-chart">
+                                <h3>Tren Keuangan Bulanan (Pemasukan vs Pengeluaran)</h3>
+                                <div class="chart-legend-custom">
+                                    <span class="legend-item"><span class="dot-in bg-emerald"></span> Pemasukan</span>
+                                    <span class="legend-item"><span class="dot-in bg-rose"></span> Pengeluaran</span>
+                                </div>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="trendChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="card report-card">
+                            <h3>Distribusi Pengeluaran Kategori</h3>
+                            <div class="chart-wrapper doughnut-wrapper">
+                                <canvas id="categoryChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Financial Insights Section -->
+                    <div class="card report-insight-card">
+                        <div class="insight-header">
+                            <i data-lucide="trending-up" class="text-emerald"></i>
+                            <h3>Rekomendasi & Analisis Kesehatan Keuangan</h3>
+                        </div>
+                        <div class="insight-content">
+                            <div class="insight-row">
+                                <div class="insight-badge good">Sangat Sehat</div>
+                                <div class="insight-text">
+                                    <h4>Rasio Pemasukan vs Pengeluaran</h4>
+                                    <p id="insight-ratio-text">Pemasukan Anda bulan ini lebih besar daripada pengeluaran. Anda memiliki surplus dana sebesar Rp 500.000 untuk ditabung.</p>
+                                </div>
+                            </div>
+                            <div class="insight-row">
+                                <div class="insight-badge warning" id="insight-category-badge">Perlu Diperhatikan</div>
+                                <div class="insight-text">
+                                    <h4>Kategori Pengeluaran Terbesar</h4>
+                                    <p id="insight-top-expense-text">Kategori "Makanan & Minuman" merupakan pengeluaran terbesar Anda bulan ini, mengambil porsi sekitar 45% dari total pengeluaran.</p>
+                                </div>
+                            </div>
+                            <div class="insight-row">
+                                <div class="insight-badge info">Tips Mahasiswa Kreatif</div>
+                                <div class="insight-text">
+                                    <h4>Strategi Penghematan</h4>
+                                    <p>Pertimbangkan untuk membawa bekal makan siang ke kampus atau menggunakan sepeda/berjalan kaki untuk jarak tempuh dekat guna menghemat pos transportasi dan makanan.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- 5. TABUNGAN PAGE -->
+                <section class="tab-content" id="tabungan-tab">
+                    <div class="page-actions-bar">
+                        <div class="info-text">
+                            <h3>Raih Mimpimu dengan Celengan Digital</h3>
+                            <p>Kumpulkan uang secara bertahap untuk kebutuhan masa depan seperti laptop, sertifikasi, atau liburan semester.</p>
+                        </div>
+                        <button class="btn btn-primary" id="btn-add-saving-goal"><i data-lucide="plus"></i> Tambah Target Baru</button>
+                    </div>
+                    
+                    <div class="savings-grid" id="savings-cards-container">
+                        <!-- Dynamic savings goals cards -->
+                    </div>
+                </section>
+                
+                <!-- 6. NOTIFIKASI PAGE -->
+                <section class="tab-content" id="notifikasi-tab">
+                    <div class="page-actions-bar">
+                        <div class="info-text">
+                            <h3>Pusat Aktivitas & Pemberitahuan</h3>
+                            <p>Dapatkan pembaruan langsung tentang keuangan, target tabungan, dan peringatan batas pengeluaran Anda.</p>
+                        </div>
+                        <div class="actions">
+                            <button class="btn btn-secondary btn-sm" id="btn-mark-all-read"><i data-lucide="check-check"></i> Tandai Semua Dibaca</button>
+                            <button class="btn btn-outline-danger btn-sm" id="btn-clear-notifications"><i data-lucide="trash-2"></i> Hapus Semua</button>
+                        </div>
+                    </div>
+                    
+                    <div class="card noti-list-card">
+                        <div class="notifications-list" id="notifications-container">
+                            <!-- Dynamic notifications list -->
+                        </div>
+                    </div>
+                </section>
+                
+            </div>
+        </main>
+    </div>
+    
+    <!-- ==================== MODALS ==================== -->
+    
+    <!-- 1. MODAL TAMBAH TRANSAKSI -->
+    <div class="modal-overlay" id="modal-transaction">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="transaction-modal-title">Tambah Transaksi Baru</h3>
+                <button class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+            </div>
+            <form id="form-transaction">
+                <input type="hidden" id="trans-id">
+                
+                <div class="form-group">
+                    <label>Tipe Transaksi</label>
+                    <div class="transaction-type-selector">
+                        <label class="type-btn active" id="type-expense-btn">
+                            <input type="radio" name="trans-type" value="pengeluaran" checked style="display:none;">
+                            <i data-lucide="arrow-up-right"></i> Pengeluaran
+                        </label>
+                        <label class="type-btn" id="type-income-btn">
+                            <input type="radio" name="trans-type" value="pemasukan" style="display:none;">
+                            <i data-lucide="arrow-down-left"></i> Pemasukan
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trans-title">Deskripsi Transaksi</label>
+                    <input type="text" id="trans-title" placeholder="Contoh: Beli Buku Aljabar Linier" required>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="trans-amount">Jumlah (Rp)</label>
+                        <input type="number" id="trans-amount" placeholder="0" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="trans-category">Kategori</label>
+                        <select id="trans-category" required>
+                            <option value="Makanan">Makanan & Minuman</option>
+                            <option value="Transportasi">Transportasi</option>
+                            <option value="Pendidikan">Kuliah & Buku</option>
+                            <option value="Kost">Kos & Bulanan</option>
+                            <option value="Hiburan">Hiburan & Sosialisasi</option>
+                            <option value="Lainnya">Lain-lain</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trans-date">Tanggal</label>
+                    <input type="date" id="trans-date" required>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-close-modal>Batal</button>
+                    <button type="submit" class="btn btn-primary">Simpan Transaksi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- 2. MODAL EDIT ANGGARAN -->
+    <div class="modal-overlay" id="modal-budget">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Atur Anggaran Kategori</h3>
+                <button class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+            </div>
+            <form id="form-budget">
+                <input type="hidden" id="budget-category-id">
+                <div class="form-group">
+                    <label>Kategori</label>
+                    <div class="category-display" id="budget-category-display">-</div>
+                </div>
+                <div class="form-group">
+                    <label for="budget-limit">Batas Anggaran Bulanan (Rp)</label>
+                    <input type="number" id="budget-limit" placeholder="0" min="0" required>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-close-modal>Batal</button>
+                    <button type="submit" class="btn btn-primary">Simpan Batas</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- 3. MODAL TAMBAH TARGET TABUNGAN -->
+    <div class="modal-overlay" id="modal-saving">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Tambah Target Celengan Baru</h3>
+                <button class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+            </div>
+            <form id="form-saving">
+                <div class="form-group">
+                    <label for="saving-name">Nama Target Tabungan</label>
+                    <input type="text" id="saving-name" placeholder="Contoh: Beli Laptop Asus ROG" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="saving-target">Target Uang (Rp)</label>
+                        <input type="number" id="saving-target" placeholder="0" min="1000" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="saving-deadline">Target Tanggal Tercapai</label>
+                        <input type="date" id="saving-deadline" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="saving-start">Saldo Awal Celengan (Rp - Opsional)</label>
+                    <input type="number" id="saving-start" placeholder="0" min="0" value="0">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-close-modal>Batal</button>
+                    <button type="submit" class="btn btn-primary">Buat Target</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- 4. MODAL SETOR/TARIK TABUNGAN -->
+    <div class="modal-overlay" id="modal-saving-action">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="saving-action-title">Setor ke Celengan</h3>
+                <button class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+            </div>
+            <form id="form-saving-action">
+                <input type="hidden" id="saving-action-id">
+                <input type="hidden" id="saving-action-mode" value="setor"> <!-- setor atau tarik -->
+                
+                <div class="saving-info-display card mb-4">
+                    <div class="saving-name-label" id="saving-action-name">-</div>
+                    <div class="saving-progress-text" id="saving-action-progress">-</div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="saving-action-amount">Jumlah Uang (Rp)</label>
+                    <input type="number" id="saving-action-amount" placeholder="0" min="1" required>
+                    <span class="helper-text" id="saving-action-helper">Uang akan dialihkan dari/ke Saldo Utama Anda.</span>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-close-modal>Batal</button>
+                    <button type="submit" class="btn btn-primary" id="btn-saving-action-submit">Setor</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Script Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
