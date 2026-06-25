@@ -43,9 +43,8 @@ const DEFAULT_NOTIFICATIONS = [
     { id: "nt-3", title: "Selamat Datang di MajuKeuangan!", message: "Mulai catat transaksi harian Anda dan kelola keuangan agar bebas krisis akhir bulan.", type: "info", read: true, time: "1 hari yang lalu" }
 ];
 
-// App state variables loaded from localStorage or using default data
+// App state — data is persisted in Supabase, only currentUser cached in localStorage
 let state = {
-    users: JSON.parse(localStorage.getItem("mk_users")) || [],
     currentUser: JSON.parse(localStorage.getItem("mk_current_user")) || null,
     transactions: [],
     budgets: {},
@@ -54,25 +53,14 @@ let state = {
     currentTipIndex: 0
 };
 
-// Seed a default test account if users list is empty
-if (state.users.length === 0) {
-    const testUser = {
-        fullname: "Rizky Fanani",
-        username: "rizky",
-        univ: "Universitas Brawijaya",
-        password: "password",
-        avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120"
-    };
-    state.users.push(testUser);
-    localStorage.setItem("mk_users", JSON.stringify(state.users));
-}
-
-// Load namespaced user data
-function loadUserData(username) {
-    state.transactions = JSON.parse(localStorage.getItem(`mk_transactions_${username}`)) || DEFAULT_TRANSACTIONS;
-    state.budgets = JSON.parse(localStorage.getItem(`mk_budgets_${username}`)) || DEFAULT_BUDGETS;
-    state.savings = JSON.parse(localStorage.getItem(`mk_savings_${username}`)) || DEFAULT_SAVINGS;
-    state.notifications = JSON.parse(localStorage.getItem(`mk_notifications_${username}`)) || DEFAULT_NOTIFICATIONS;
+// Load all user data from Supabase into state
+async function loadUserDataFromSupabase() {
+    if (!state.currentUser?.id) return;
+    const data = await sbLoadAllData(state.currentUser.id);
+    state.transactions  = data.transactions;
+    state.budgets       = data.budgets;
+    state.savings       = data.savings;
+    state.notifications = data.notifications;
 }
 
 // Global chart variables for Chart.js instances
@@ -126,16 +114,8 @@ function getCategoryCssClass(category) {
     }
 }
 
-// Save state to localStorage
+// Save current user session to localStorage (data lives in Supabase)
 function saveState() {
-    if (state.currentUser) {
-        const username = state.currentUser.username;
-        localStorage.setItem(`mk_transactions_${username}`, JSON.stringify(state.transactions));
-        localStorage.setItem(`mk_budgets_${username}`, JSON.stringify(state.budgets));
-        localStorage.setItem(`mk_savings_${username}`, JSON.stringify(state.savings));
-        localStorage.setItem(`mk_notifications_${username}`, JSON.stringify(state.notifications));
-    }
-    localStorage.setItem("mk_users", JSON.stringify(state.users));
     localStorage.setItem("mk_current_user", JSON.stringify(state.currentUser));
 }
 
@@ -320,7 +300,7 @@ function addNotification(title, message, type = "info") {
         time: "Baru saja"
     };
     state.notifications.unshift(newNoti);
-    saveState();
+    if (state.currentUser?.id) sbAddNotification(state.currentUser.id, newNoti);
     updateNotificationsUI();
 }
 
@@ -869,20 +849,20 @@ function markAsRead(id) {
     const noti = state.notifications.find(n => n.id === id);
     if (noti) {
         noti.read = true;
-        saveState();
+        if (state.currentUser?.id) sbMarkNotifRead(id, state.currentUser.id);
         updateNotificationsUI();
     }
 }
 
 document.getElementById("btn-mark-all-read").addEventListener("click", () => {
     state.notifications.forEach(n => n.read = true);
-    saveState();
+    if (state.currentUser?.id) sbMarkAllNotifsRead(state.currentUser.id);
     updateNotificationsUI();
 });
 
 document.getElementById("btn-clear-notifications").addEventListener("click", () => {
+    if (state.currentUser?.id) sbClearAllNotifs(state.currentUser.id);
     state.notifications = [];
-    saveState();
     updateNotificationsUI();
 });
 
@@ -1236,7 +1216,7 @@ window.saveGlobalBudget = function() {
     }
 
     state.budgets["__total__"] = limit;
-    saveState();
+    if (state.currentUser?.id) sbSyncBudget(state.currentUser.id, "__total__", limit);
     updateBudgetsUI();
     updateDashboardUI();
 
@@ -1581,6 +1561,7 @@ document.getElementById("form-transaction").addEventListener("submit", (e) => {
         const idx = state.transactions.findIndex(t => t.id === id);
         if (idx !== -1) {
             state.transactions[idx] = { id, title, type, category, amount, date };
+            if (state.currentUser?.id) sbSyncTransaction(state.currentUser.id, state.transactions[idx]);
         }
     } else {
         // Create new transaction
@@ -1592,17 +1573,16 @@ document.getElementById("form-transaction").addEventListener("submit", (e) => {
             amount,
             date
         };
-        
+
         // Add to front of list
         state.transactions.unshift(newTx);
-        
+        if (state.currentUser?.id) sbSyncTransaction(state.currentUser.id, newTx);
+
         // Logical threshold check for warnings
         if (type === "pengeluaran") {
             checkBudgetThresholds(category, amount);
         }
     }
-
-    saveState();
     closeModal(modalOverlayTransactions);
     
     // Refresh all view grids
@@ -1647,7 +1627,7 @@ window.editTransaction = function(id) {
 window.deleteTransaction = function(id) {
     if (confirm("Apakah Anda yakin ingin menghapus transaksi ini?")) {
         state.transactions = state.transactions.filter(t => t.id !== id);
-        saveState();
+        if (state.currentUser?.id) sbDeleteTransaction(id, state.currentUser.id);
         updateDashboardUI();
         updateTransactionsUI();
         updateBudgetsUI();
@@ -1673,7 +1653,7 @@ document.getElementById("form-budget").addEventListener("submit", (e) => {
     const limit = parseInt(document.getElementById("budget-limit").value);
 
     state.budgets[category] = limit;
-    saveState();
+    if (state.currentUser?.id) sbSyncBudget(state.currentUser.id, category, limit);
     closeModal(modalOverlayBudgets);
 
     // Refresh UI
@@ -1705,12 +1685,8 @@ document.getElementById("form-saving").addEventListener("submit", (e) => {
     };
 
     state.savings.unshift(newGoal);
+    if (state.currentUser?.id) sbSyncSaving(state.currentUser.id, newGoal);
 
-    // If initial amount exists, reflect it in main balance as a deduction?
-    // We treat the savings target's money as separate, so we don't automatically withdraw initial amount from main balance.
-    // However, subsequent deposit/withdrawals WILL affect main balance.
-
-    saveState();
     closeModal(modalOverlaySavings);
 
     updateDashboardUI();
@@ -1721,7 +1697,7 @@ document.getElementById("form-saving").addEventListener("submit", (e) => {
 window.deleteSavingGoal = function(id) {
     if (confirm("Apakah Anda yakin ingin menghapus target tabungan ini?")) {
         state.savings = state.savings.filter(s => s.id !== id);
-        saveState();
+        if (state.currentUser?.id) sbDeleteSaving(id, state.currentUser.id);
         updateDashboardUI();
         updateSavingsUI();
     }
@@ -1794,9 +1770,9 @@ document.getElementById("form-saving-action").addEventListener("submit", (e) => 
 
         // Update saving amount
         goal.current += amount;
-        
-        // Add matching transaction of type 'pengeluaran' with tag 'Lainnya' or virtual 'Tabungan'
-        // to balance out the main balance automatically
+        if (state.currentUser?.id) sbSyncSaving(state.currentUser.id, goal);
+
+        // Add matching pengeluaran transaction to reduce main balance
         const newTx = {
             id: "tx-" + Date.now(),
             title: `Setor Celengan: ${goal.name}`,
@@ -1806,6 +1782,7 @@ document.getElementById("form-saving-action").addEventListener("submit", (e) => 
             date: new Date().toISOString().split('T')[0]
         };
         state.transactions.unshift(newTx);
+        if (state.currentUser?.id) sbSyncTransaction(state.currentUser.id, newTx);
 
         // Check if goal achieved
         if (goal.current >= goal.target) {
@@ -1825,9 +1802,9 @@ document.getElementById("form-saving-action").addEventListener("submit", (e) => 
 
         // Deduct from savings goal
         goal.current -= amount;
+        if (state.currentUser?.id) sbSyncSaving(state.currentUser.id, goal);
 
-        // Add matching transaction of type 'pemasukan' with category 'Lainnya' 
-        // to increase the main balance automatically
+        // Add matching pemasukan transaction to increase main balance
         const newTx = {
             id: "tx-" + Date.now(),
             title: `Tarik Celengan: ${goal.name}`,
@@ -1837,9 +1814,8 @@ document.getElementById("form-saving-action").addEventListener("submit", (e) => 
             date: new Date().toISOString().split('T')[0]
         };
         state.transactions.unshift(newTx);
+        if (state.currentUser?.id) sbSyncTransaction(state.currentUser.id, newTx);
     }
-
-    saveState();
     closeModal(modalOverlaySavingAction);
 
     // Refresh UI
@@ -1874,7 +1850,7 @@ function initAuth() {
     if (forgotLink) {
         forgotLink.addEventListener("click", (e) => {
             e.preventDefault();
-            alert("Gunakan akun demo — username: rizky, password: password");
+            alert("Lupa password? Hubungi admin untuk reset akun.");
         });
     }
 
@@ -1902,37 +1878,31 @@ function initAuth() {
     });
 
     // Login Form Submit
-    formLogin.addEventListener("submit", (e) => {
+    formLogin.addEventListener("submit", async (e) => {
         e.preventDefault();
         const usernameInput = document.getElementById("login-username").value.trim().toLowerCase();
         const passwordInput = document.getElementById("login-password").value;
 
-        // Search user database
-        const user = state.users.find(u => u.username === usernameInput);
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.textContent = "Memverifikasi...";
 
-        if (!user) {
-            alert("Username tidak ditemukan!");
-            return;
+        try {
+            const user = await sbLogin(usernameInput, passwordInput);
+            state.currentUser = user;
+            saveState();
+            await loadUserDataFromSupabase();
+            enterMainApplication();
+        } catch (err) {
+            alert(err.message || "Login gagal. Periksa username dan password.");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Masuk Sekarang";
         }
-
-        if (user.password !== passwordInput) {
-            alert("Password yang Anda masukkan salah!");
-            return;
-        }
-
-        // Login Success
-        state.currentUser = user;
-        saveState();
-        
-        // Load data namespaced by username
-        loadUserData(user.username);
-        
-        // Enter dashboard view
-        enterMainApplication();
     });
 
     // Register Form Submit
-    formRegister.addEventListener("submit", (e) => {
+    formRegister.addEventListener("submit", async (e) => {
         e.preventDefault();
         const fullname = document.getElementById("reg-fullname").value.trim();
         const username = document.getElementById("reg-username").value.trim().toLowerCase();
@@ -1940,37 +1910,39 @@ function initAuth() {
         const password = document.getElementById("reg-password").value;
         const avatar = document.querySelector('input[name="reg-avatar"]:checked').value;
 
-        // Check availability
-        const exists = state.users.some(u => u.username === username);
-        if (exists) {
-            alert("Username sudah terdaftar! Silakan gunakan username lain.");
+        if (password.length < 6) {
+            alert("Password minimal 6 karakter.");
             return;
         }
 
-        // Create new account
-        const newUser = { fullname, username, univ, password, avatar };
-        state.users.push(newUser);
-        state.currentUser = newUser;
-        saveState();
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.textContent = "Mendaftarkan...";
 
-        // Seed data for the new user
-        loadUserData(username);
-        saveState(); // Saves default values namespaced for this user
+        try {
+            const user = await sbRegister(username, password, fullname, univ, avatar);
+            state.currentUser = user;
+            saveState();
+            await loadUserDataFromSupabase();
+            enterMainApplication();
 
-        // Transition to main dashboard
-        enterMainApplication();
-        
-        // Reset register forms
-        formRegister.reset();
-        avatarOptions.forEach(o => o.classList.remove("active"));
-        avatarOptions[0].classList.add("active");
-        avatarOptions[0].querySelector("input").checked = true;
+            formRegister.reset();
+            avatarOptions.forEach(o => o.classList.remove("active"));
+            avatarOptions[0].classList.add("active");
+            avatarOptions[0].querySelector("input").checked = true;
+        } catch (err) {
+            alert(err.message || "Registrasi gagal. Coba lagi.");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Daftar Akun";
+        }
     });
 
     // Logout Click
-    btnLogout.addEventListener("click", (e) => {
+    btnLogout.addEventListener("click", async (e) => {
         e.preventDefault();
         if (confirm("Apakah Anda yakin ingin keluar dari MajuKeuangan?")) {
+            await sbLogout();
             logoutUser();
         }
     });
@@ -2010,6 +1982,10 @@ function logoutUser() {
     const mainAppContainer = document.getElementById("main-app-container");
 
     state.currentUser = null;
+    state.transactions = [];
+    state.budgets = {};
+    state.savings = [];
+    state.notifications = [];
     saveState();
 
     mainAppContainer.style.opacity = "0";
@@ -2018,8 +1994,7 @@ function logoutUser() {
         authContainer.style.display = "flex";
         authContainer.style.opacity = "1";
         document.getElementById("form-login").reset();
-        
-        // Set forms back to login state
+
         document.getElementById("register-view").classList.remove("active");
         document.getElementById("login-view").classList.add("active");
     }, 200);
@@ -2029,7 +2004,7 @@ function logoutUser() {
 // INITIALIZATION ON DOM CONTENT LOADED
 // ==========================================
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     // 1. Navigation SPA Init
     initNavigation();
 
@@ -2042,29 +2017,27 @@ document.addEventListener("DOMContentLoaded", () => {
     // 4. Init E-Statement period selects (populates month/year options)
     initEStatementSelects();
 
-    // 5. Initial Auth state check
-    if (state.currentUser) {
-        // Load namespaced user data
-        loadUserData(state.currentUser.username);
-        
-        // Set profile sidebar element values
-        document.getElementById("user-avatar").src = state.currentUser.avatar;
-        document.getElementById("user-name").textContent = state.currentUser.fullname;
-        document.getElementById("user-univ").textContent = state.currentUser.univ;
-        
-        // Show app UI
+    // 5. Check active Supabase session (auto-login on page reload)
+    const sessionUser = await sbGetCurrentSession();
+    if (sessionUser) {
+        state.currentUser = sessionUser;
+        saveState();
+        await loadUserDataFromSupabase();
+
+        document.getElementById("user-avatar").src = sessionUser.avatar;
+        document.getElementById("user-name").textContent = sessionUser.fullname;
+        document.getElementById("user-univ").textContent = sessionUser.univ;
+
         document.getElementById("auth-container").style.display = "none";
         document.getElementById("main-app-container").style.display = "flex";
         document.getElementById("main-app-container").style.opacity = "1";
-        
-        // Initial rendering
+
         updateDashboardUI();
         updateTransactionsUI();
         updateBudgetsUI();
         updateSavingsUI();
         updateNotificationsUI();
     } else {
-        // Show login/register panel
         document.getElementById("auth-container").style.display = "flex";
         document.getElementById("auth-container").style.opacity = "1";
         document.getElementById("main-app-container").style.display = "none";
