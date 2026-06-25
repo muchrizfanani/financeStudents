@@ -1,6 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initDb, getDb } from './db.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -8,6 +12,10 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+// Serve public/ di root ('/images/logo.svg') — sama dengan Vite dev server
+app.use(express.static(path.join(__dirname, 'public')));
+// Serve HTML/JS/CSS frontend (index.html, app.js, style.css)
+app.use(express.static(__dirname));
 
 // Initialize Database on Startup
 initDb().catch(err => {
@@ -169,11 +177,15 @@ app.get('/api/transactions', async (req, res) => {
 
 // Create Transaction
 app.post('/api/transactions', async (req, res) => {
-    const { title, type, category, amount, date } = req.body;
+    const { title, type, category, date } = req.body;
+    const amount = parseInt(req.body.amount, 10);
     const txId = `tx-${Date.now()}`;
 
-    if (!title || !type || !category || !amount || !date) {
+    if (!title || !type || !category || !date) {
         return res.status(400).json({ error: "All transaction parameters required." });
+    }
+    if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Jumlah transaksi harus berupa angka positif." });
     }
 
     try {
@@ -311,10 +323,14 @@ app.post('/api/savings', async (req, res) => {
 // Setor / Tarik Savings goal action (integrates directly with Main Balance)
 app.post('/api/savings/:id/action', async (req, res) => {
     const { id } = req.params;
-    const { mode, amount } = req.body; // mode: "setor" or "tarik"
+    const { mode } = req.body;
+    const amount = parseInt(req.body.amount, 10);
 
-    if (!mode || !amount) {
+    if (!mode) {
         return res.status(400).json({ error: "Mode (setor/tarik) and amount required." });
+    }
+    if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Jumlah harus berupa angka positif." });
     }
 
     try {

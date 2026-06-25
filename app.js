@@ -27,7 +27,6 @@ const DEFAULT_BUDGETS = {
     "Transportasi": 200000,
     "Pendidikan": 300000,
     "Kost": 900000,
-    "Hiburan: Nomaden": 250000, // Hiburan
     "Hiburan": 250000,
     "Lainnya": 400000
 };
@@ -146,6 +145,34 @@ function refreshIcons() {
 }
 
 // ==========================================
+// MONTH DATA HELPERS
+// ==========================================
+
+const MONTH_NAMES = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+
+function getMonthData(month, year) {
+    const monthTx = state.transactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() + 1 === month && d.getFullYear() === year;
+    });
+    const income = monthTx.filter(t => t.type === "pemasukan").reduce((s, t) => s + t.amount, 0);
+    const expense = monthTx.filter(t => t.type === "pengeluaran").reduce((s, t) => s + t.amount, 0);
+    return { income, expense, net: income - expense, transactions: monthTx };
+}
+
+function getLastNMonths(n) {
+    const result = [];
+    const now = new Date();
+    for (let i = n - 1; i >= 0; i--) {
+        let m = now.getMonth() - i;
+        let y = now.getFullYear();
+        while (m < 0) { m += 12; y--; }
+        result.push({ month: m + 1, year: y, label: `${MONTH_NAMES[m]} ${y}`, ...getMonthData(m + 1, y) });
+    }
+    return result;
+}
+
+// ==========================================
 // SPA ROUTING & CORE NAVIGATION
 // ==========================================
 
@@ -173,12 +200,13 @@ function initNavigation() {
 
             // Update Header Title
             const title = item.querySelector("span").textContent;
-            pageTitle.textContent = title === "Notifikasi" ? "Pusat Notifikasi" : title;
+            const titleMap = { "notifikasi": "Pusat Notifikasi", "aruskas": "Arus Kas", "estatement": "E-Statement" };
+            pageTitle.textContent = titleMap[targetTab] || title;
 
-            // Trigger specific page load actions (like charts)
-            if (targetTab === "laporan") {
-                renderCharts();
-            }
+            // Trigger specific page load actions
+            if (targetTab === "laporan") renderCharts();
+            if (targetTab === "aruskas") updateArusKasUI();
+            if (targetTab === "estatement") updateEStatementUI();
 
             // Close sidebar on mobile
             if (window.innerWidth <= 1024) {
@@ -240,36 +268,24 @@ function initTheme() {
 // ==========================================
 
 function calculateFinancials() {
-    // Total income
     const totalIncome = state.transactions
         .filter(t => t.type === "pemasukan")
         .reduce((sum, t) => sum + t.amount, 0);
 
-    // Total expenses (from transactions)
     const totalExpense = state.transactions
         .filter(t => t.type === "pengeluaran")
         .reduce((sum, t) => sum + t.amount, 0);
 
-    // Main Balance = Income - Expense
-    // (Note: Savings deposits will be deducted from this main balance and held in Savings goals)
-    const totalDeposited = state.savings.reduce((sum, s) => sum + s.current, 0);
-    
-    // Balance available in wallet
     const mainBalance = totalIncome - totalExpense;
 
-    return {
-        mainBalance,
-        totalIncome,
-        totalExpense
-    };
+    return { mainBalance, totalIncome, totalExpense };
 }
 
 // ==========================================
 // SYSTEM ALERTS & NOTIFICATIONS LOGIC
 // ==========================================
 
-function checkBudgetThresholds(category, newExpenseAmount = 0) {
-    // Calculate total expense for this category in current month
+function checkBudgetThresholds(category) {
     const currentCategoryExpense = state.transactions
         .filter(t => t.type === "pengeluaran" && t.category === category)
         .reduce((sum, t) => sum + t.amount, 0);
@@ -320,22 +336,61 @@ function updateDashboardUI() {
     document.getElementById("dash-income").textContent = formatRupiah(financials.totalIncome);
     document.getElementById("dash-expense").textContent = formatRupiah(financials.totalExpense);
 
-    // Calculate overall budget percentage spending
-    const totalBudgets = Object.values(state.budgets).reduce((a, b) => a + b, 0);
+    // Calculate overall budget percentage spending (exclude global __total__ key)
+    const totalBudgets = Object.entries(state.budgets)
+        .filter(([k]) => k !== "__total__")
+        .reduce((a, [,v]) => a + v, 0);
     const budgetPct = totalBudgets > 0 ? Math.round((financials.totalExpense / totalBudgets) * 100) : 0;
-    
+
     const budgetPercentageText = document.getElementById("dash-expense-percentage");
-    budgetPercentageText.textContent = `${budgetPct}% dari Anggaran`;
     budgetPercentageText.className = `trend ${budgetPct > 90 ? 'down' : 'up'}`;
-    budgetPercentageText.innerHTML = budgetPct > 90 ? 
-        `<i data-lucide="arrow-up"></i> ${budgetPct}% dari Anggaran` : 
+    budgetPercentageText.innerHTML = budgetPct > 90 ?
+        `<i data-lucide="arrow-up"></i> ${budgetPct}% dari Anggaran` :
         `<i data-lucide="arrow-down"></i> ${budgetPct}% dari Anggaran`;
 
-    // 2. Render Categories Budget Progress on Dashboard (Top 3 highest usage or standard list)
+    // Status Row: Hemat/Boros badge + prev month comparison
+    const now = new Date();
+    const thisMonthData = getMonthData(now.getMonth() + 1, now.getFullYear());
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthData = getMonthData(prevDate.getMonth() + 1, prevDate.getFullYear());
+
+    const spendingRatio = thisMonthData.income > 0 ? thisMonthData.expense / thisMonthData.income : 0;
+    let spendingLabel, spendingClass, spendingIcon;
+    if (spendingRatio <= 0.5)      { spendingLabel = "Hemat";  spendingClass = "hemat";  spendingIcon = "trending-down"; }
+    else if (spendingRatio <= 0.8) { spendingLabel = "Normal"; spendingClass = "normal"; spendingIcon = "minus"; }
+    else                           { spendingLabel = "Boros";  spendingClass = "boros";  spendingIcon = "trending-up"; }
+
+    const prevPct = prevMonthData.expense > 0
+        ? Math.round(((thisMonthData.expense - prevMonthData.expense) / prevMonthData.expense) * 100)
+        : (thisMonthData.expense > 0 ? 100 : 0);
+    const prevIsUp = prevPct >= 0;
+    const prevColor = prevPct > 20 ? "var(--rose)" : prevPct < -10 ? "var(--emerald)" : "var(--amber)";
+
+    const statusRow = document.getElementById("dashboard-status-row");
+    if (statusRow) {
+        statusRow.innerHTML = `
+            <div class="spending-badge ${spendingClass}">
+                <i data-lucide="${spendingIcon}"></i>
+                <div>
+                    <strong>${spendingLabel}</strong>
+                    <span>${Math.round(spendingRatio * 100)}% pengeluaran dari pemasukan bulan ini</span>
+                </div>
+            </div>
+            <div class="month-compare-badge ${prevIsUp ? 'up' : 'down'}">
+                <i data-lucide="${prevIsUp ? 'arrow-up' : 'arrow-down'}"></i>
+                <div>
+                    <strong style="color:${prevColor}">${prevIsUp ? '+' : ''}${prevPct}%</strong>
+                    <span>pengeluaran vs ${MONTH_NAMES[prevDate.getMonth()]} ${prevDate.getFullYear()}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // 2. Render Categories Budget Progress on Dashboard (Top 4, skip __total__)
     const dashBudgetList = document.getElementById("dash-budget-list");
     dashBudgetList.innerHTML = "";
 
-    const categories = Object.keys(state.budgets);
+    const categories = Object.keys(state.budgets).filter(k => k !== "__total__");
     categories.slice(0, 4).forEach(cat => {
         const limit = state.budgets[cat] || 0;
         const spent = state.transactions
@@ -562,10 +617,72 @@ document.getElementById("global-search").addEventListener("input", () => {
 // ==========================================
 
 function updateBudgetsUI() {
+    // Render global budget card
+    const globalSection = document.getElementById("global-budget-section");
+    if (globalSection) {
+        const globalLimit = state.budgets["__total__"] || 0;
+        const now = new Date();
+        const thisMonthExpense = getMonthData(now.getMonth() + 1, now.getFullYear()).expense;
+        const pct = globalLimit > 0 ? Math.min(Math.round((thisMonthExpense / globalLimit) * 100), 100) : 0;
+
+        let barColor = "var(--emerald)";
+        let alertBadge = "";
+        let alertHtml = "";
+
+        if (globalLimit > 0) {
+            if (pct >= 100) {
+                barColor = "var(--rose)";
+                alertBadge = `<span class="global-alert-badge danger">KRITIS ≥100%</span>`;
+                alertHtml = `<div class="alert alert-danger" style="margin-top:12px;"><div class="alert-icon"><i data-lucide="alert-octagon"></i></div><div class="alert-content"><h4>Anggaran Total Habis!</h4><p>Pengeluaran bulan ini telah melampaui batas total yang Anda tetapkan.</p></div></div>`;
+            } else if (pct >= 90) {
+                barColor = "var(--rose)";
+                alertBadge = `<span class="global-alert-badge danger">BAHAYA ≥90%</span>`;
+                alertHtml = `<div class="alert alert-danger" style="margin-top:12px;"><div class="alert-icon"><i data-lucide="alert-octagon"></i></div><div class="alert-content"><h4>Anggaran Total Hampir Habis</h4><p>Pengeluaran sudah mencapai <strong>${pct}%</strong> dari batas total. Kurangi pengeluaran segera!</p></div></div>`;
+            } else if (pct >= 75) {
+                barColor = "var(--amber)";
+                alertBadge = `<span class="global-alert-badge warning">WASPADA ≥75%</span>`;
+                alertHtml = `<div class="alert alert-warning" style="margin-top:12px;"><div class="alert-icon"><i data-lucide="alert-triangle"></i></div><div class="alert-content"><h4>Waspada Pengeluaran</h4><p>Pengeluaran sudah mencapai <strong>${pct}%</strong> dari batas total bulanan.</p></div></div>`;
+            }
+        }
+
+        globalSection.innerHTML = `
+            <div class="card global-budget-card">
+                <div class="global-budget-header">
+                    <div class="global-budget-title">
+                        <i data-lucide="shield-check"></i>
+                        <h3>Anggaran Total Bulanan</h3>
+                    </div>
+                    ${alertBadge}
+                </div>
+                <p style="font-size:13px; color:var(--text-muted); margin:8px 0 16px;">Atur batas maksimum total pengeluaran per bulan. Sistem akan memberi peringatan bertingkat saat mendekati batas.</p>
+                <div class="global-budget-input-row">
+                    <div style="flex:1; position:relative;">
+                        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:13px; pointer-events:none;">Rp</span>
+                        <input type="number" id="global-budget-input" value="${globalLimit > 0 ? globalLimit : ''}" placeholder="Contoh: 2000000" min="0" class="form-input" style="padding-left:40px; width:100%; box-sizing:border-box;">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveGlobalBudget()">Simpan Batas</button>
+                </div>
+                ${globalLimit > 0 ? `
+                <div style="margin-top:16px;">
+                    <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;">
+                        <span>Pengeluaran bulan ini: <strong>${formatRupiah(thisMonthExpense)}</strong></span>
+                        <span style="color:${barColor}; font-weight:600;">${pct}% dari ${formatRupiah(globalLimit)}</span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" style="width:${pct}%; background-color:${barColor};"></div>
+                    </div>
+                    ${alertHtml}
+                </div>
+                ` : ''}
+            </div>
+        `;
+        refreshIcons();
+    }
+
     const budgetCardsContainer = document.getElementById("budget-cards-container");
     budgetCardsContainer.innerHTML = "";
 
-    const categories = Object.keys(state.budgets);
+    const categories = Object.keys(state.budgets).filter(k => k !== "__total__");
     categories.forEach(cat => {
         const limit = state.budgets[cat] || 0;
         const spent = state.transactions
@@ -774,6 +891,363 @@ document.getElementById("noti-quick-btn").addEventListener("click", () => {
 });
 
 // ==========================================
+// RENDERING ARUS KAS PAGE
+// ==========================================
+
+function updateArusKasUI() {
+    const months = getLastNMonths(6);
+
+    const avgIncome  = months.reduce((s, m) => s + m.income,  0) / 6;
+    const avgExpense = months.reduce((s, m) => s + m.expense, 0) / 6;
+    const avgNet     = avgIncome - avgExpense;
+
+    // Summary cards
+    const summaryEl = document.getElementById("cashflow-summary-cards");
+    if (!summaryEl) return;
+    summaryEl.innerHTML = `
+        <div class="summary-card income">
+            <div class="card-header">
+                <span>Rata-rata Pemasukan</span>
+                <div class="card-icon"><i data-lucide="trending-up"></i></div>
+            </div>
+            <h2 class="amount text-emerald">${formatRupiah(avgIncome)}</h2>
+            <div class="card-footer"><span class="footer-desc">Per bulan (6 bulan terakhir)</span></div>
+        </div>
+        <div class="summary-card expense">
+            <div class="card-header">
+                <span>Rata-rata Pengeluaran</span>
+                <div class="card-icon"><i data-lucide="trending-down"></i></div>
+            </div>
+            <h2 class="amount text-rose">${formatRupiah(avgExpense)}</h2>
+            <div class="card-footer"><span class="footer-desc">Per bulan (6 bulan terakhir)</span></div>
+        </div>
+        <div class="summary-card ${avgNet >= 0 ? 'balance' : 'expense'}">
+            ${avgNet >= 0 ? '<div class="card-glow"></div>' : ''}
+            <div class="card-header">
+                <span>Rata-rata Arus Kas Bersih</span>
+                <div class="card-icon"><i data-lucide="wallet"></i></div>
+            </div>
+            <h2 class="amount ${avgNet < 0 ? 'text-rose' : ''}">${avgNet >= 0 ? '+' : ''}${formatRupiah(avgNet)}</h2>
+            <div class="card-footer"><span class="footer-desc">${avgNet >= 0 ? 'Surplus rata-rata' : 'Defisit rata-rata'}</span></div>
+        </div>
+    `;
+
+    // Cashflow table
+    const tableBody = document.getElementById("cashflow-table-body");
+    if (!tableBody) return;
+    tableBody.innerHTML = "";
+    months.forEach(m => {
+        const netColor   = m.net >= 0 ? 'var(--emerald)' : 'var(--rose)';
+        const statusText = m.net >= 0 ? 'Surplus' : 'Defisit';
+        const statusCls  = m.net >= 0 ? 'pemasukan' : 'pengeluaran';
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td><strong>${m.label}</strong></td>
+            <td class="amount-text pemasukan">+ ${formatRupiah(m.income)}</td>
+            <td class="amount-text pengeluaran">- ${formatRupiah(m.expense)}</td>
+            <td style="color:${netColor}; font-weight:600;">${m.net >= 0 ? '+' : ''}${formatRupiah(m.net)}</td>
+            <td><span class="badge-type ${statusCls}">${statusText}</span></td>
+        `;
+        tableBody.appendChild(tr);
+    });
+
+    // Projection card
+    const financials = calculateFinancials();
+    const now = new Date();
+    const thisMonthData = getMonthData(now.getMonth() + 1, now.getFullYear());
+    const dailyExpense  = now.getDate() > 0 ? thisMonthData.expense / now.getDate() : 0;
+
+    const projEl = document.getElementById("cashflow-projection-card");
+    if (!projEl) return;
+
+    if (financials.mainBalance > 0 && dailyExpense > 0) {
+        const daysLeft   = Math.ceil(financials.mainBalance / dailyExpense);
+        const projDate   = new Date(Date.now() + daysLeft * 86400000);
+        const urgColor   = daysLeft <= 7 ? 'var(--rose)' : daysLeft <= 14 ? 'var(--amber)' : 'var(--emerald)';
+        projEl.innerHTML = `
+            <div class="insight-header">
+                <i data-lucide="calendar-clock" style="color:var(--amber);"></i>
+                <h3>Proyeksi Saldo</h3>
+            </div>
+            <div class="insight-content">
+                <div class="insight-row">
+                    <div class="insight-badge info">Estimasi</div>
+                    <div class="insight-text">
+                        <h4>Kapan Saldo Habis?</h4>
+                        <p>Berdasarkan pengeluaran harian bulan ini (<strong>${formatRupiah(Math.round(dailyExpense))}/hari</strong>),
+                        saldo <strong>${formatRupiah(financials.mainBalance)}</strong> diperkirakan akan habis dalam
+                        <strong style="color:${urgColor}">${daysLeft} hari</strong>
+                        (sekitar ${projDate.toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' })}).</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        projEl.innerHTML = `
+            <div class="insight-header">
+                <i data-lucide="calendar-clock" style="color:var(--amber);"></i>
+                <h3>Proyeksi Saldo</h3>
+            </div>
+            <div class="insight-content">
+                <div class="insight-row">
+                    <div class="insight-badge info">Info</div>
+                    <div class="insight-text">
+                        <h4>Data Belum Cukup</h4>
+                        <p class="text-muted">Belum cukup data transaksi bulan ini untuk menghitung proyeksi.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    refreshIcons();
+}
+
+// ==========================================
+// RENDERING E-STATEMENT PAGE
+// ==========================================
+
+function initEStatementSelects() {
+    const monthSel = document.getElementById("estatement-month");
+    const yearSel  = document.getElementById("estatement-year");
+    if (!monthSel || !yearSel) return;
+
+    MONTH_NAMES.forEach((name, idx) => {
+        const opt = document.createElement("option");
+        opt.value = idx + 1;
+        opt.textContent = name;
+        monthSel.appendChild(opt);
+    });
+
+    const currentYear = new Date().getFullYear();
+    for (let y = currentYear - 2; y <= currentYear; y++) {
+        const opt = document.createElement("option");
+        opt.value = y;
+        opt.textContent = y;
+        yearSel.appendChild(opt);
+    }
+
+    monthSel.value = new Date().getMonth() + 1;
+    yearSel.value  = currentYear;
+
+    monthSel.addEventListener("change", updateEStatementUI);
+    yearSel.addEventListener("change", updateEStatementUI);
+}
+
+function updateEStatementUI() {
+    const monthSel = document.getElementById("estatement-month");
+    const yearSel  = document.getElementById("estatement-year");
+    if (!monthSel || !yearSel) return;
+
+    const month  = parseInt(monthSel.value);
+    const year   = parseInt(yearSel.value);
+    const data   = getMonthData(month, year);
+    const period = `${MONTH_NAMES[month - 1]} ${year}`;
+    const net    = data.income - data.expense;
+
+    const periodLabel = document.getElementById("estatement-period-label");
+    if (periodLabel) periodLabel.textContent = `Periode: ${period}`;
+
+    // Summary cards
+    const summaryEl = document.getElementById("estatement-summary-cards");
+    if (summaryEl) {
+        summaryEl.innerHTML = `
+            <div class="summary-card income">
+                <div class="card-header">
+                    <span>Total Pemasukan</span>
+                    <div class="card-icon"><i data-lucide="arrow-down-left"></i></div>
+                </div>
+                <h2 class="amount text-emerald">${formatRupiah(data.income)}</h2>
+                <div class="card-footer"><span class="footer-desc">${period}</span></div>
+            </div>
+            <div class="summary-card expense">
+                <div class="card-header">
+                    <span>Total Pengeluaran</span>
+                    <div class="card-icon"><i data-lucide="arrow-up-right"></i></div>
+                </div>
+                <h2 class="amount text-rose">${formatRupiah(data.expense)}</h2>
+                <div class="card-footer"><span class="footer-desc">${period}</span></div>
+            </div>
+            <div class="summary-card ${net >= 0 ? 'balance' : 'expense'}">
+                ${net >= 0 ? '<div class="card-glow"></div>' : ''}
+                <div class="card-header">
+                    <span>Arus Kas Bersih</span>
+                    <div class="card-icon"><i data-lucide="wallet"></i></div>
+                </div>
+                <h2 class="amount ${net < 0 ? 'text-rose' : ''}">${net >= 0 ? '+' : ''}${formatRupiah(net)}</h2>
+                <div class="card-footer"><span class="footer-desc">${net >= 0 ? 'Surplus bulan ini' : 'Defisit bulan ini'}</span></div>
+            </div>
+        `;
+    }
+
+    // Preview table
+    const tableBody = document.getElementById("estatement-table-body");
+    if (!tableBody) return;
+    tableBody.innerHTML = "";
+
+    const sortedTx = [...data.transactions].sort((a, b) => a.date.localeCompare(b.date));
+
+    if (sortedTx.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:40px 0;">Tidak ada transaksi di periode ${period}.</td></tr>`;
+    } else {
+        sortedTx.forEach(tx => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${formatDate(tx.date)}</td>
+                <td><div class="category-tag"><i data-lucide="${getCategoryIconName(tx.category)}"></i><span>${tx.category}</span></div></td>
+                <td>${tx.title}</td>
+                <td class="amount-text ${tx.type === 'pemasukan' ? 'pemasukan' : 'pengeluaran'}">${tx.type === 'pemasukan' ? '+' : '-'}${formatRupiah(tx.amount)}</td>
+                <td><span class="badge-type ${tx.type}">${tx.type === 'pemasukan' ? 'Masuk' : 'Keluar'}</span></td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    refreshIcons();
+}
+
+window.downloadPDF = function() {
+    if (typeof window.jspdf === 'undefined') {
+        alert("Library PDF belum siap. Pastikan koneksi internet aktif dan coba lagi.");
+        return;
+    }
+
+    const month  = parseInt(document.getElementById("estatement-month").value);
+    const year   = parseInt(document.getElementById("estatement-year").value);
+    const period = `${MONTH_NAMES[month - 1]} ${year}`;
+    const data   = getMonthData(month, year);
+    const sortedTx = [...data.transactions].sort((a, b) => a.date.localeCompare(b.date));
+    const net    = data.income - data.expense;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    doc.setFontSize(20);
+    doc.setTextColor(99, 102, 241);
+    doc.text("MajuKeuangan", 14, 18);
+
+    doc.setFontSize(9);
+    doc.setTextColor(130);
+    doc.text("Sistem Manajemen Keuangan Mahasiswa", 14, 25);
+
+    doc.setDrawColor(99, 102, 241);
+    doc.setLineWidth(0.5);
+    doc.line(14, 28, 196, 28);
+
+    doc.setFontSize(14);
+    doc.setTextColor(30);
+    doc.text(`E-Statement — ${period}`, 14, 37);
+
+    doc.setFontSize(10);
+    doc.setTextColor(50);
+    doc.text("Total Pemasukan  :", 14, 47);
+    doc.setTextColor(16, 185, 129);
+    doc.text(formatRupiah(data.income), 65, 47);
+
+    doc.setTextColor(50);
+    doc.text("Total Pengeluaran :", 14, 54);
+    doc.setTextColor(244, 63, 94);
+    doc.text(formatRupiah(data.expense), 65, 54);
+
+    doc.setTextColor(50);
+    doc.text("Saldo Bersih      :", 14, 61);
+    doc.setTextColor(net >= 0 ? 16 : 244, net >= 0 ? 185 : 63, net >= 0 ? 129 : 94);
+    doc.text(`${net >= 0 ? '+' : ''}${formatRupiah(net)}`, 65, 61);
+
+    if (sortedTx.length > 0) {
+        doc.autoTable({
+            startY: 70,
+            head: [["Tanggal", "Kategori", "Deskripsi", "Tipe", "Nominal"]],
+            body: sortedTx.map(t => [
+                formatDate(t.date),
+                t.category,
+                t.title,
+                t.type === "pemasukan" ? "Masuk" : "Keluar",
+                `${t.type === "pemasukan" ? "+" : "-"}${formatRupiah(t.amount)}`
+            ]),
+            styles: { fontSize: 8, cellPadding: 3 },
+            headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: 'bold' },
+            alternateRowStyles: { fillColor: [248, 248, 255] },
+            columnStyles: { 4: { halign: 'right' } }
+        });
+    } else {
+        doc.setTextColor(150);
+        doc.text("Tidak ada transaksi pada periode ini.", 14, 76);
+    }
+
+    const pageHeight = doc.internal.pageSize.height;
+    doc.setFontSize(8);
+    doc.setTextColor(180);
+    doc.text(`Digenerate oleh MajuKeuangan • ${new Date().toLocaleDateString('id-ID')}`, 14, pageHeight - 8);
+
+    doc.save(`MajuKeuangan_Statement_${period.replace(" ", "_")}.pdf`);
+};
+
+window.downloadExcel = function() {
+    if (typeof window.XLSX === 'undefined') {
+        alert("Library Excel belum siap. Pastikan koneksi internet aktif dan coba lagi.");
+        return;
+    }
+
+    const month  = parseInt(document.getElementById("estatement-month").value);
+    const year   = parseInt(document.getElementById("estatement-year").value);
+    const period = `${MONTH_NAMES[month - 1]} ${year}`;
+    const data   = getMonthData(month, year);
+    const sortedTx = [...data.transactions].sort((a, b) => a.date.localeCompare(b.date));
+    const net    = data.income - data.expense;
+
+    const XLSX = window.XLSX;
+    const wb   = XLSX.utils.book_new();
+
+    const ws1 = XLSX.utils.aoa_to_sheet([
+        ["MajuKeuangan — E-Statement", ""],
+        ["Periode", period],
+        ["Tanggal Generate", new Date().toLocaleDateString('id-ID')],
+        [""],
+        ["Total Pemasukan", data.income],
+        ["Total Pengeluaran", data.expense],
+        ["Saldo Bersih", net]
+    ]);
+    ws1['!cols'] = [{ wch: 22 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, ws1, "Ringkasan");
+
+    const txRows = sortedTx.map(t => [
+        formatDate(t.date),
+        t.category,
+        t.title,
+        t.type === "pemasukan" ? "Masuk" : "Keluar",
+        t.type === "pemasukan" ? t.amount : -t.amount
+    ]);
+    const ws2 = XLSX.utils.aoa_to_sheet([["Tanggal","Kategori","Deskripsi","Tipe","Nominal"], ...txRows]);
+    ws2['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 35 }, { wch: 10 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, ws2, "Transaksi");
+
+    XLSX.writeFile(wb, `MajuKeuangan_Statement_${period.replace(" ", "_")}.xlsx`);
+};
+
+window.saveGlobalBudget = function() {
+    const input = document.getElementById("global-budget-input");
+    if (!input) return;
+
+    const limit = parseInt(input.value);
+    if (isNaN(limit) || limit < 0) {
+        alert("Masukkan angka batas anggaran yang valid.");
+        return;
+    }
+
+    state.budgets["__total__"] = limit;
+    saveState();
+    updateBudgetsUI();
+    updateDashboardUI();
+
+    addNotification(
+        "Anggaran Total Diperbarui",
+        `Batas total pengeluaran bulan ini diatur ke ${formatRupiah(limit)}.`,
+        "success"
+    );
+};
+
+// ==========================================
 // RENDERING LAPORAN PAGE (CHART.JS VISUALS)
 // ==========================================
 
@@ -787,8 +1261,8 @@ function renderCharts() {
     Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
     Chart.defaults.font.size = 12;
 
-    // --- 1. PREPARE DATA ---
-    const categories = Object.keys(state.budgets);
+    // --- 1. PREPARE DATA --- (exclude __total__ global budget key)
+    const categories = Object.keys(state.budgets).filter(k => k !== "__total__");
     const categoryExpenseData = categories.map(cat => {
         return state.transactions
             .filter(t => t.type === "pengeluaran" && t.category === cat)
@@ -1395,6 +1869,15 @@ function initAuth() {
     const formRegister = document.getElementById("form-register");
     const btnLogout = document.getElementById("btn-logout");
 
+    // Handle "Lupa Password" hint
+    const forgotLink = document.querySelector(".forgot-link");
+    if (forgotLink) {
+        forgotLink.addEventListener("click", (e) => {
+            e.preventDefault();
+            alert("Gunakan akun demo — username: rizky, password: password");
+        });
+    }
+
     // Toggle between Login and Register views
     linkToRegister.addEventListener("click", (e) => {
         e.preventDefault();
@@ -1556,7 +2039,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // 3. Authentication Forms & Flow Init
     initAuth();
 
-    // 4. Initial Auth state check
+    // 4. Init E-Statement period selects (populates month/year options)
+    initEStatementSelects();
+
+    // 5. Initial Auth state check
     if (state.currentUser) {
         // Load namespaced user data
         loadUserData(state.currentUser.username);

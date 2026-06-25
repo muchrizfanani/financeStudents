@@ -563,7 +563,7 @@ export default function App() {
                     <div className="auth-brand-panel">
                         <div className="brand-panel-glow"></div>
                         <div className="brand-logo">
-                            <div className="logo-icon">
+                            <div className="logo">
                                 <WalletCards size={20} />
                             </div>
                             <span>Maju<span className="highlight">Keuangan</span></span>

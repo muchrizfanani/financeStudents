@@ -1161,6 +1161,12 @@ select:focus {
     color: var(--text-muted);
 }
 
+.budget-numeric-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
 .budget-numeric {
     font-family: var(--font-heading);
     font-size: 18px;
@@ -1229,19 +1235,6 @@ select:focus {
     height: 380px;
     display: flex;
     flex-direction: column;
-}
-
-.report-card.span-2 {
-    grid-column: span 1; /* Fallback */
-}
-
-@media (min-width: 1024px) {
-    .report-card.span-2 {
-        grid-column: span 1;
-    }
-    .reports-grid {
-        grid-template-columns: 1.8fr 1.2fr;
-    }
 }
 
 @media (max-width: 1023px) {
@@ -1761,12 +1754,21 @@ select:focus {
 
 /* Utility space */
 .mb-4 { margin-bottom: 16px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
 
 /* ==========================================
    RESPONSIVE DESIGN (BREAKPOINTS)
    ========================================== */
 
-@media (max-width: 1200px) {
+@media (max-width: 900px) {
+    .summary-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+}
+
+@media (max-width: 600px) {
     .summary-grid {
         grid-template-columns: 1fr;
         gap: 16px;
@@ -2305,3 +2307,218 @@ select:focus {
         grid-template-columns: repeat(3, 1fr);
     }
 }
+
+/* ==========================================
+   DASHBOARD STATUS ROW (Hemat/Boros + Prev Month)
+   ========================================== */
+
+.dashboard-status-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.spending-badge,
+.month-compare-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: var(--border-radius-md);
+    font-size: 13px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    backdrop-filter: blur(8px);
+}
+
+.spending-badge div,
+.month-compare-badge div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.spending-badge strong,
+.month-compare-badge strong {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.spending-badge span,
+.month-compare-badge span {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.spending-badge i,
+.month-compare-badge i {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.spending-badge.hemat  { border-color: rgba(16, 185, 129, 0.3); }
+.spending-badge.hemat i, .spending-badge.hemat strong { color: var(--emerald); }
+
+.spending-badge.normal { border-color: rgba(245, 158, 11, 0.3); }
+.spending-badge.normal i, .spending-badge.normal strong { color: var(--amber); }
+
+.spending-badge.boros  { border-color: rgba(244, 63, 94, 0.3); }
+.spending-badge.boros i, .spending-badge.boros strong { color: var(--rose); }
+
+.month-compare-badge.up   { border-color: rgba(244, 63, 94, 0.2); }
+.month-compare-badge.down { border-color: rgba(16, 185, 129, 0.2); }
+
+/* ==========================================
+   GLOBAL BUDGET CARD (Anggaran Total)
+   ========================================== */
+
+.global-budget-card {
+    margin-bottom: 24px;
+}
+
+.global-budget-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0;
+}
+
+.global-budget-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.global-budget-title i {
+    width: 20px;
+    height: 20px;
+    color: var(--accent);
+}
+
+.global-budget-title h3 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.global-budget-input-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.global-budget-input-row .form-input {
+    height: 42px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: var(--font-primary);
+    transition: border-color var(--transition-fast);
+}
+
+.global-budget-input-row .form-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.global-alert-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: var(--border-radius-full);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.global-alert-badge.warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--amber);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.global-alert-badge.danger {
+    background: rgba(244, 63, 94, 0.15);
+    color: var(--rose);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+/* ==========================================
+   ARUS KAS PAGE
+   ========================================== */
+
+#aruskas-tab .summary-grid,
+#estatement-tab .summary-grid {
+    margin-bottom: 24px;
+}
+
+/* ==========================================
+   E-STATEMENT PAGE
+   ========================================== */
+
+.estatement-period-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.estatement-period-row .form-group {
+    min-width: 160px;
+}
+
+@media (max-width: 600px) {
+    .dashboard-status-row {
+        flex-direction: column;
+    }
+
+    .estatement-period-row {
+        flex-direction: column;
+    }
+
+    .global-budget-input-row {
+        flex-direction: column;
+    }
+
+    .global-budget-input-row .btn {
+        width: 100%;
+    }
+}
+
+/* Light theme overrides for new components */
+.light-theme .spending-badge,
+.light-theme .month-compare-badge {
+    background: rgba(255,255,255,0.8);
+}
+
+/* ==========================================
+   LOGO IMAGE OVERRIDES
+   ========================================== */
+
+.sidebar-logo-img {
+    height: 32px;
+    width: auto;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.auth-logo-img {
+    height: 44px;
+    width: auto;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.auth-logo-text {
+    font-family: var(--font-heading);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+}
+

@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MajuKeuangan - Sistem Manajemen Keuangan Mahasiswa</title>
     
+    <!-- Favicon -->
+    <link rel="icon" type="images/png" href="public/images/logo-icon.png">
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,7 +18,14 @@
     
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
+
+    <!-- jsPDF + AutoTable for PDF Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
     <!-- Stylesheet -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -28,10 +38,8 @@
             <div class="auth-brand-panel">
                 <div class="brand-panel-glow"></div>
                 <div class="brand-logo">
-                    <div class="logo-icon">
-                        <i data-lucide="wallet-cards"></i>
-                    </div>
-                    <span>Maju<span class="highlight">Keuangan</span></span>
+                    <img src="public/images/logo-icon.png" alt="MajuKeuangan" class="auth-logo-img">
+                    <span class="auth-logo-text">Maju<span class="highlight">Keuangan</span></span>
                 </div>
                 <div class="brand-panel-content">
                     <h2>Kelola Keuangan Kuliahmu dengan Cerdas</h2>
@@ -144,9 +152,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <div class="logo-icon">
-                        <i data-lucide="wallet-cards"></i>
-                    </div>
+                    <img src="public/images/logo-icon.png" alt="MajuKeuangan" class="sidebar-logo-img">
                     <span class="logo-text">Maju<span class="highlight">Keuangan</span></span>
                 </div>
             </div>
@@ -176,6 +182,14 @@
                     <i data-lucide="bell"></i>
                     <span>Notifikasi</span>
                     <span class="badge" id="noti-badge">0</span>
+                </a>
+                <a href="#" class="menu-item" data-tab="aruskas">
+                    <i data-lucide="activity"></i>
+                    <span>Arus Kas</span>
+                </a>
+                <a href="#" class="menu-item" data-tab="estatement">
+                    <i data-lucide="file-text"></i>
+                    <span>E-Statement</span>
                 </a>
                 <a href="#" class="menu-item logout-menu-btn" id="btn-logout">
                     <i data-lucide="log-out"></i>
@@ -269,6 +283,9 @@
                         </div>
                     </div>
                     
+                    <!-- Status Row: Hemat/Boros + Prev Month Comparison -->
+                    <div id="dashboard-status-row" class="dashboard-status-row"></div>
+
                     <!-- Dashboard Details Grid -->
                     <div class="details-grid">
                         <!-- Left Column (Transactions & Budget progress) -->
@@ -400,6 +417,9 @@
                         </div>
                     </div>
                     
+                    <!-- Global Budget Card (rendered by JS) -->
+                    <div id="global-budget-section"></div>
+
                     <div class="budget-grid" id="budget-cards-container">
                         <!-- Dynamic budget cards -->
                     </div>
@@ -488,14 +508,109 @@
                             <button class="btn btn-outline-danger btn-sm" id="btn-clear-notifications"><i data-lucide="trash-2"></i> Hapus Semua</button>
                         </div>
                     </div>
-                    
+
                     <div class="card noti-list-card">
                         <div class="notifications-list" id="notifications-container">
                             <!-- Dynamic notifications list -->
                         </div>
                     </div>
                 </section>
-                
+
+                <!-- 7. ARUS KAS PAGE -->
+                <section class="tab-content" id="aruskas-tab">
+                    <div class="page-actions-bar">
+                        <div class="info-text">
+                            <h3>Analisis Arus Kas 6 Bulan</h3>
+                            <p>Pantau tren pemasukan dan pengeluaran, serta proyeksi kapan saldo Anda akan habis.</p>
+                        </div>
+                    </div>
+
+                    <div class="summary-grid" id="cashflow-summary-cards"></div>
+
+                    <div class="card">
+                        <div class="card-title-container">
+                            <h3>Riwayat Arus Kas Bulanan</h3>
+                        </div>
+                        <div class="table-container">
+                            <table class="main-table">
+                                <thead>
+                                    <tr>
+                                        <th>Periode</th>
+                                        <th>Pemasukan</th>
+                                        <th>Pengeluaran</th>
+                                        <th>Arus Kas Bersih</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cashflow-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card report-insight-card" id="cashflow-projection-card"></div>
+                </section>
+
+                <!-- 8. E-STATEMENT PAGE -->
+                <section class="tab-content" id="estatement-tab">
+                    <div class="page-actions-bar">
+                        <div class="info-text">
+                            <h3>E-Statement Keuangan</h3>
+                            <p>Ekspor laporan keuangan bulanan Anda dalam format PDF atau Excel.</p>
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button class="btn btn-secondary" onclick="downloadExcel()">
+                                <i data-lucide="file-spreadsheet"></i> Export Excel
+                            </button>
+                            <button class="btn btn-primary" onclick="downloadPDF()">
+                                <i data-lucide="file-down"></i> Export PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title-container">
+                            <h3>Pilih Periode Laporan</h3>
+                        </div>
+                        <div class="estatement-period-row">
+                            <div class="form-group" style="margin-bottom:0; flex:1;">
+                                <label>Bulan</label>
+                                <div class="select-wrapper">
+                                    <select id="estatement-month"></select>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0; flex:0 0 140px;">
+                                <label>Tahun</label>
+                                <div class="select-wrapper">
+                                    <select id="estatement-year"></select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="summary-grid" id="estatement-summary-cards"></div>
+
+                    <div class="card">
+                        <div class="card-title-container">
+                            <h3>Preview Transaksi</h3>
+                            <span id="estatement-period-label" style="font-size:13px; color:var(--text-muted);"></span>
+                        </div>
+                        <div class="table-container">
+                            <table class="main-table">
+                                <thead>
+                                    <tr>
+                                        <th>Tanggal</th>
+                                        <th>Kategori</th>
+                                        <th>Deskripsi</th>
+                                        <th>Nominal</th>
+                                        <th>Tipe</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="estatement-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
             </div>
         </main>
     </div>

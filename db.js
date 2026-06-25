@@ -6,12 +6,18 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.resolve(__dirname, 'database.db');
 
-// Open the database connection
+let dbInstance = null;
+
+// Singleton: satu koneksi dipakai ulang, bukan dibuka baru tiap panggilan
 export async function getDb() {
-    return open({
-        filename: dbPath,
-        driver: sqlite3.Database
-    });
+    if (!dbInstance) {
+        dbInstance = await open({
+            filename: dbPath,
+            driver: sqlite3.Database
+        });
+        await dbInstance.run('PRAGMA foreign_keys = ON');
+    }
+    return dbInstance;
 }
 
 // Initialize tables and seed initial data
@@ -72,7 +78,7 @@ export async function initDb() {
 
     // Check if the default developer user exists
     const devUser = await db.get("SELECT * FROM users WHERE username = ?", ["rizky"]);
-    
+
     if (!devUser) {
         // Insert test user
         const result = await db.run(
