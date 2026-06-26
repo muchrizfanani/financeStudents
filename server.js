@@ -2,7 +2,22 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { initDb, getDb } from './db.js';
+
+// Hashing password menggunakan SHA-256 + salt (node:crypto built-in, tanpa dependency baru)
+function hashPassword(password) {
+    const salt = randomBytes(16).toString('hex');
+    const hash = createHash('sha256').update(salt + password).digest('hex');
+    return `${salt}:${hash}`;
+}
+function verifyPassword(password, stored) {
+    const [salt, hash] = stored.split(':');
+    if (!salt || !hash) return false; // format lama (plain text) — tolak
+    const attempt = createHash('sha256').update(salt + password).digest('hex');
+    // timingSafeEqual mencegah timing attack
+    return timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(attempt, 'hex'));
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -62,10 +77,11 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ error: "Username sudah terdaftar! Gunakan username lain." });
         }
 
-        // Insert new user
+        // Insert new user — password di-hash sebelum disimpan
+        const hashedPwd = hashPassword(password);
         const result = await db.run(
             "INSERT INTO users (fullname, username, univ, password, avatar) VALUES (?, ?, ?, ?, ?)",
-            [fullname, username.toLowerCase(), univ, password, avatar]
+            [fullname, username.toLowerCase(), univ, hashedPwd, avatar]
         );
         const userId = result.lastID;
 
@@ -136,7 +152,8 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(404).json({ error: "Username tidak ditemukan." });
         }
 
-        if (user.password !== password) {
+        // Verifikasi password dengan hash; tolak jika format lama (plain text)
+        if (!verifyPassword(password, user.password)) {
             return res.status(401).json({ error: "Password salah!" });
         }
 

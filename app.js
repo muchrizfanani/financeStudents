@@ -56,11 +56,20 @@ let state = {
 // Load all user data from Supabase into state
 async function loadUserDataFromSupabase() {
     if (!state.currentUser?.id) return;
-    const data = await sbLoadAllData(state.currentUser.id);
-    state.transactions  = data.transactions;
-    state.budgets       = data.budgets;
-    state.savings       = data.savings;
-    state.notifications = data.notifications;
+    try {
+        const data = await sbLoadAllData(state.currentUser.id);
+        state.transactions  = data.transactions;
+        state.budgets       = data.budgets;
+        state.savings       = data.savings;
+        state.notifications = data.notifications;
+    } catch (err) {
+        console.error("Gagal memuat data dari server:", err);
+        // Tampilkan pesan non-invasif di header jika data gagal dimuat
+        const dateEl = document.getElementById("current-date");
+        if (dateEl) {
+            dateEl.innerHTML += ' &nbsp;<span style="color:var(--amber);font-size:12px;">⚠ Gagal sinkronisasi data. Periksa koneksi.</span>';
+        }
+    }
 }
 
 // Global chart variables for Chart.js instances
@@ -266,25 +275,45 @@ function calculateFinancials() {
 // ==========================================
 
 function checkBudgetThresholds(category) {
+    // Filter hanya pengeluaran bulan berjalan agar tidak terpicu oleh data bulan lalu
+    const now = new Date();
+    const curM = now.getMonth() + 1;
+    const curY = now.getFullYear();
+
     const currentCategoryExpense = state.transactions
-        .filter(t => t.type === "pengeluaran" && t.category === category)
+        .filter(t => {
+            const d = new Date(t.date);
+            return t.type === "pengeluaran" && t.category === category &&
+                   d.getMonth() + 1 === curM && d.getFullYear() === curY;
+        })
         .reduce((sum, t) => sum + t.amount, 0);
 
     const budgetLimit = state.budgets[category] || 0;
     if (budgetLimit === 0) return;
 
     const percentageUsed = (currentCategoryExpense / budgetLimit) * 100;
-    
-    if (percentageUsed >= 100) {
+
+    // Deduplikasi: hanya tambah notifikasi jika belum ada yang serupa untuk kategori + bulan ini
+    const monthLabel = `${now.getMonth() + 1}/${now.getFullYear()}`;
+    const alreadyOver  = state.notifications.some(n =>
+        n.title === "Batas Anggaran Terlampaui!" &&
+        n.message.includes(category) && n.message.includes(monthLabel)
+    );
+    const alreadyWarn  = state.notifications.some(n =>
+        n.title === "Anggaran Mendekati Batas" &&
+        n.message.includes(category) && n.message.includes(monthLabel)
+    );
+
+    if (percentageUsed >= 100 && !alreadyOver) {
         addNotification(
             "Batas Anggaran Terlampaui!",
-            `Pengeluaran kategori ${category} Anda telah melampaui batas anggaran (100%+).`,
+            `Pengeluaran kategori ${category} Anda telah melampaui batas anggaran (100%+) — ${monthLabel}.`,
             "danger"
         );
-    } else if (percentageUsed >= 80) {
+    } else if (percentageUsed >= 80 && percentageUsed < 100 && !alreadyWarn) {
         addNotification(
             "Anggaran Mendekati Batas",
-            `Pengeluaran kategori ${category} Anda sudah mencapai ${Math.round(percentageUsed)}% dari anggaran bulanan.`,
+            `Pengeluaran kategori ${category} sudah ${Math.round(percentageUsed)}% dari batas bulanan — ${monthLabel}.`,
             "warning"
         );
     }
@@ -311,28 +340,40 @@ function addNotification(title, message, type = "info") {
 function updateDashboardUI() {
     const financials = calculateFinancials();
 
-    // 1. Render Top Summary Cards
-    document.getElementById("dash-balance").textContent = formatRupiah(financials.mainBalance);
-    document.getElementById("dash-income").textContent = formatRupiah(financials.totalIncome);
-    document.getElementById("dash-expense").textContent = formatRupiah(financials.totalExpense);
+    // Data bulanan untuk kartu "Bulan Ini"
+    const now = new Date();
+    const thisMonthData = getMonthData(now.getMonth() + 1, now.getFullYear());
+    const prevDate      = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthData = getMonthData(prevDate.getMonth() + 1, prevDate.getFullYear());
 
-    // Calculate overall budget percentage spending (exclude global __total__ key)
+    // 1. Render Top Summary Cards (income & expense = bulan ini; balance = all-time)
+    document.getElementById("dash-balance").textContent = formatRupiah(financials.mainBalance);
+    document.getElementById("dash-income").textContent  = formatRupiah(thisMonthData.income);
+    document.getElementById("dash-expense").textContent = formatRupiah(thisMonthData.expense);
+
+    // Hitung persentase perubahan saldo vs bulan lalu secara dinamis
+    const prevBalance  = financials.mainBalance - thisMonthData.net;
+    const balanceDiff  = prevBalance !== 0
+        ? Math.round((thisMonthData.net / Math.abs(prevBalance)) * 100)
+        : (thisMonthData.net > 0 ? 100 : 0);
+    const trendEl = document.getElementById("dash-balance-trend");
+    if (trendEl) {
+        const isUp  = balanceDiff >= 0;
+        trendEl.className = `trend ${isUp ? 'up' : 'down'}`;
+        trendEl.innerHTML = `<i data-lucide="${isUp ? 'trending-up' : 'trending-down'}"></i> ${isUp ? '+' : ''}${balanceDiff}%`;
+    }
+
+    // Persentase pengeluaran bulan ini vs total anggaran (exclude __total__)
     const totalBudgets = Object.entries(state.budgets)
         .filter(([k]) => k !== "__total__")
         .reduce((a, [,v]) => a + v, 0);
-    const budgetPct = totalBudgets > 0 ? Math.round((financials.totalExpense / totalBudgets) * 100) : 0;
+    const budgetPct = totalBudgets > 0 ? Math.round((thisMonthData.expense / totalBudgets) * 100) : 0;
 
     const budgetPercentageText = document.getElementById("dash-expense-percentage");
     budgetPercentageText.className = `trend ${budgetPct > 90 ? 'down' : 'up'}`;
     budgetPercentageText.innerHTML = budgetPct > 90 ?
         `<i data-lucide="arrow-up"></i> ${budgetPct}% dari Anggaran` :
         `<i data-lucide="arrow-down"></i> ${budgetPct}% dari Anggaran`;
-
-    // Status Row: Hemat/Boros badge + prev month comparison
-    const now = new Date();
-    const thisMonthData = getMonthData(now.getMonth() + 1, now.getFullYear());
-    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthData = getMonthData(prevDate.getMonth() + 1, prevDate.getFullYear());
 
     const spendingRatio = thisMonthData.income > 0 ? thisMonthData.expense / thisMonthData.income : 0;
     let spendingLabel, spendingClass, spendingIcon;
@@ -370,11 +411,20 @@ function updateDashboardUI() {
     const dashBudgetList = document.getElementById("dash-budget-list");
     dashBudgetList.innerHTML = "";
 
+    // Gunakan pengeluaran bulan ini untuk dashboard budget overview
+    const nowDash = new Date();
+    const dashMonth = nowDash.getMonth() + 1;
+    const dashYear  = nowDash.getFullYear();
+
     const categories = Object.keys(state.budgets).filter(k => k !== "__total__");
     categories.slice(0, 4).forEach(cat => {
         const limit = state.budgets[cat] || 0;
         const spent = state.transactions
-            .filter(t => t.type === "pengeluaran" && t.category === cat)
+            .filter(t => {
+                const d = new Date(t.date);
+                return t.type === "pengeluaran" && t.category === cat &&
+                       d.getMonth() + 1 === dashMonth && d.getFullYear() === dashYear;
+            })
             .reduce((sum, t) => sum + t.amount, 0);
         
         const pct = limit > 0 ? Math.min(Math.round((spent / limit) * 100), 100) : 0;
@@ -590,6 +640,10 @@ document.getElementById("btn-reset-filters").addEventListener("click", () => {
 document.getElementById("global-search").addEventListener("input", () => {
     currentPage = 1;
     updateTransactionsUI();
+    // Juga filter halaman tabungan jika sedang aktif
+    if (document.getElementById("tabungan-tab").classList.contains("active")) {
+        updateSavingsUI();
+    }
 });
 
 // ==========================================
@@ -662,11 +716,20 @@ function updateBudgetsUI() {
     const budgetCardsContainer = document.getElementById("budget-cards-container");
     budgetCardsContainer.innerHTML = "";
 
+    // Gunakan pengeluaran bulan berjalan saja agar sesuai limit bulanan
+    const nowBudget = new Date();
+    const curMonth = nowBudget.getMonth() + 1;
+    const curYear  = nowBudget.getFullYear();
+
     const categories = Object.keys(state.budgets).filter(k => k !== "__total__");
     categories.forEach(cat => {
         const limit = state.budgets[cat] || 0;
         const spent = state.transactions
-            .filter(t => t.type === "pengeluaran" && t.category === cat)
+            .filter(t => {
+                const d = new Date(t.date);
+                return t.type === "pengeluaran" && t.category === cat &&
+                       d.getMonth() + 1 === curMonth && d.getFullYear() === curYear;
+            })
             .reduce((sum, t) => sum + t.amount, 0);
 
         const pct = limit > 0 ? Math.min(Math.round((spent / limit) * 100), 100) : 0;
@@ -731,22 +794,48 @@ function updateSavingsUI() {
     const container = document.getElementById("savings-cards-container");
     container.innerHTML = "";
 
-    if (state.savings.length === 0) {
+    // Filter berdasarkan global search jika ada kata kunci
+    const keyword = document.getElementById("global-search")?.value.toLowerCase() || "";
+    const filteredSavings = keyword
+        ? state.savings.filter(sv => sv.name.toLowerCase().includes(keyword))
+        : state.savings;
+
+    if (filteredSavings.length === 0) {
+        const msg = keyword
+            ? `Tidak ada tabungan yang cocok dengan "${keyword}".`
+            : "Belum ada target tabungan. Ayo buat celengan pertamamu!";
         container.innerHTML = `
             <div class="card span-all" style="grid-column: 1/-1; text-align: center; padding: 40px;">
-                <p class="text-muted">Belum ada target tabungan. Ayo buat celengan pertamamu!</p>
+                <p class="text-muted">${msg}</p>
             </div>
         `;
         return;
     }
 
-    state.savings.forEach(sv => {
+    filteredSavings.forEach(sv => {
         const pct = sv.target > 0 ? Math.min(Math.round((sv.current / sv.target) * 100), 100) : 0;
         const isCompleted = sv.current >= sv.target;
-        
+
+        // Hitung sisa hari menuju deadline
+        const today      = new Date(); today.setHours(0,0,0,0);
+        const deadlineD  = new Date(sv.deadline); deadlineD.setHours(0,0,0,0);
+        const daysLeft   = Math.ceil((deadlineD - today) / 86400000);
+        let daysLabel, daysColor;
+        if (isCompleted) {
+            daysLabel = "Target tercapai!"; daysColor = "var(--emerald)";
+        } else if (daysLeft < 0) {
+            daysLabel = `Kadaluarsa ${Math.abs(daysLeft)} hari lalu`; daysColor = "var(--rose)";
+        } else if (daysLeft === 0) {
+            daysLabel = "Jatuh tempo hari ini!"; daysColor = "var(--rose)";
+        } else if (daysLeft <= 7) {
+            daysLabel = `${daysLeft} hari lagi`; daysColor = "var(--amber)";
+        } else {
+            daysLabel = `${daysLeft} hari lagi`; daysColor = "var(--text-muted)";
+        }
+
         const card = document.createElement("div");
         card.className = `card saving-card ${isCompleted ? 'completed' : ''}`;
-        
+
         card.innerHTML = `
             ${isCompleted ? '<div class="completed-badge-ribbon">TERCAPAI</div>' : ''}
             <div class="saving-card-header">
@@ -756,12 +845,12 @@ function updateSavingsUI() {
                     </div>
                     <div class="saving-card-details">
                         <h4>${sv.name}</h4>
-                        <span>Target: ${formatDate(sv.deadline)}</span>
+                        <span>Deadline: ${formatDate(sv.deadline)}</span>
                     </div>
                 </div>
                 <button class="btn-icon-only danger" onclick="deleteSavingGoal('${sv.id}')" title="Hapus Target"><i data-lucide="trash-2"></i></button>
             </div>
-            
+
             <div>
                 <div class="saving-numeric-display">
                     <span>${formatRupiah(sv.current)}</span>
@@ -770,12 +859,15 @@ function updateSavingsUI() {
                 <div class="progress-bar-container mt-3">
                     <div class="progress-bar-fill" style="width: ${pct}%; background-color: ${isCompleted ? 'var(--emerald)' : 'var(--accent)'};"></div>
                 </div>
-                <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-muted); margin-top:8px;">
-                    <span>Terkumpul: ${pct}%</span>
-                    <span>Sisa: ${formatRupiah(Math.max(0, sv.target - sv.current))}</span>
+                <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px;">
+                    <span style="color:var(--text-muted)">Terkumpul: ${pct}%</span>
+                    <span style="color:var(--text-muted)">Sisa: ${formatRupiah(Math.max(0, sv.target - sv.current))}</span>
+                </div>
+                <div style="margin-top:6px; font-size:12px; font-weight:600; color:${daysColor};">
+                    <i data-lucide="clock" style="width:12px;height:12px;vertical-align:middle;margin-right:3px;"></i>${daysLabel}
                 </div>
             </div>
-            
+
             <div class="saving-card-footer-btns">
                 <button class="btn btn-secondary btn-sm" onclick="openSavingActionModal('${sv.id}', 'tarik')" ${sv.current === 0 ? 'disabled' : ''}><i data-lucide="minus"></i> Tarik</button>
                 <button class="btn btn-primary btn-sm" onclick="openSavingActionModal('${sv.id}', 'setor')" ${isCompleted ? 'disabled' : ''}><i data-lucide="plus"></i> Setor</button>
@@ -1241,50 +1333,42 @@ function renderCharts() {
     Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
     Chart.defaults.font.size = 12;
 
-    // --- 1. PREPARE DATA --- (exclude __total__ global budget key)
+    // --- 1. PREPARE DATA ---
+
+    // Trend bulanan: ambil 6 bulan terakhir (sama dengan halaman Arus Kas)
+    const trendMonths   = getLastNMonths(6);
+    const trendLabels   = trendMonths.map(m => MONTH_NAMES[m.month - 1].slice(0, 3) + ' ' + String(m.year).slice(-2));
+    const monthlyIncome  = trendMonths.map(m => m.income);
+    const monthlyExpense = trendMonths.map(m => m.expense);
+
+    // Distribusi pengeluaran per kategori bulan berjalan (untuk doughnut)
+    const nowChart  = new Date();
+    const chartM    = nowChart.getMonth() + 1;
+    const chartY    = nowChart.getFullYear();
     const categories = Object.keys(state.budgets).filter(k => k !== "__total__");
-    const categoryExpenseData = categories.map(cat => {
-        return state.transactions
-            .filter(t => t.type === "pengeluaran" && t.category === cat)
-            .reduce((sum, t) => sum + t.amount, 0);
-    });
+    const categoryExpenseData = categories.map(cat =>
+        state.transactions
+            .filter(t => {
+                const d = new Date(t.date);
+                return t.type === "pengeluaran" && t.category === cat &&
+                       d.getMonth() + 1 === chartM && d.getFullYear() === chartY;
+            })
+            .reduce((sum, t) => sum + t.amount, 0)
+    );
 
-    // Generate weekly income/expense trend data for current month (June 2026 for prototype context)
-    // We group by week: Week 1 (1-7), Week 2 (8-14), Week 3 (15-21), Week 4 (22-30)
-    const weeks = ["Minggu 1", "Minggu 2", "Minggu 3", "Minggu 4"];
-    const weeklyIncome = [0, 0, 0, 0];
-    const weeklyExpense = [0, 0, 0, 0];
-
-    state.transactions.forEach(t => {
-        const date = new Date(t.date);
-        const day = date.getDate();
-        let weekIdx = 0;
-        
-        if (day <= 7) weekIdx = 0;
-        else if (day <= 14) weekIdx = 1;
-        else if (day <= 21) weekIdx = 2;
-        else weekIdx = 3;
-
-        if (t.type === "pemasukan") {
-            weeklyIncome[weekIdx] += t.amount;
-        } else {
-            weeklyExpense[weekIdx] += t.amount;
-        }
-    });
-
-    // --- 2. RENDER TREND LINE CHART ---
+    // --- 2. RENDER TREND LINE CHART (6 bulan terakhir) ---
     const trendCtx = document.getElementById("trendChart")?.getContext("2d");
     if (trendCtx) {
         if (trendChart) trendChart.destroy();
-        
+
         trendChart = new Chart(trendCtx, {
             type: 'line',
             data: {
-                labels: weeks,
+                labels: trendLabels,
                 datasets: [
                     {
                         label: 'Pemasukan',
-                        data: weeklyIncome,
+                        data: monthlyIncome,
                         borderColor: '#10b981',
                         backgroundColor: 'rgba(16, 185, 129, 0.1)',
                         borderWidth: 3,
@@ -1298,7 +1382,7 @@ function renderCharts() {
                     },
                     {
                         label: 'Pengeluaran',
-                        data: weeklyExpense,
+                        data: monthlyExpense,
                         borderColor: '#f43f5e',
                         backgroundColor: 'rgba(244, 63, 94, 0.1)',
                         borderWidth: 3,
@@ -1417,24 +1501,48 @@ function renderCharts() {
         });
     }
 
-    // --- 4. HEALTH INSIGHT LOGIC ---
-    updateFinancialInsights(weeklyIncome, weeklyExpense, categoryExpenseData, categories);
+    // --- 4. HEALTH INSIGHT LOGIC (gunakan data bulan berjalan) ---
+    const nowInsight = new Date();
+    const insightMonth = getMonthData(nowInsight.getMonth() + 1, nowInsight.getFullYear());
+    updateFinancialInsights(insightMonth.income, insightMonth.expense, categoryExpenseData, categories);
 }
 
-function updateFinancialInsights(income, expense, expenseData, categories) {
-    const totalIncome = income.reduce((a,b) => a+b,0);
-    const totalExpense = expense.reduce((a,b) => a+b,0);
-    
+// Menerima nilai tunggal (bukan array) dari data bulan berjalan
+function updateFinancialInsights(totalIncome, totalExpense, expenseData, categories) {
+
+    // Badge kesehatan finansial (dinamis, bukan hardcoded "Sangat Sehat")
+    const ratioBadge = document.querySelector(".insight-row:first-child .insight-badge");
+    if (ratioBadge) {
+        if (totalIncome === 0 && totalExpense === 0) {
+            ratioBadge.textContent = "Belum Ada Data";
+            ratioBadge.className = "insight-badge info";
+        } else if (totalExpense === 0 || totalIncome > totalExpense * 1.5) {
+            ratioBadge.textContent = "Sangat Sehat";
+            ratioBadge.className = "insight-badge good";
+        } else if (totalIncome > totalExpense) {
+            ratioBadge.textContent = "Sehat";
+            ratioBadge.className = "insight-badge good";
+        } else if (totalIncome === totalExpense) {
+            ratioBadge.textContent = "Pas-pasan";
+            ratioBadge.className = "insight-badge warning";
+        } else {
+            ratioBadge.textContent = "Defisit";
+            ratioBadge.className = "insight-badge danger";
+        }
+    }
+
     // Insight Ratio text
     const ratioText = document.getElementById("insight-ratio-text");
     if (totalIncome > totalExpense) {
         const surplus = totalIncome - totalExpense;
-        ratioText.innerHTML = `Pemasukan Anda bulan ini lebih besar daripada pengeluaran. Anda memiliki surplus dana sebesar <strong>${formatRupiah(surplus)}</strong> yang siap dialokasikan untuk target Tabungan Anda. Sangat baik!`;
+        ratioText.innerHTML = `Pemasukan Anda bulan ini lebih besar daripada pengeluaran. Surplus dana sebesar <strong>${formatRupiah(surplus)}</strong> siap dialokasikan untuk target tabungan Anda. Sangat baik!`;
     } else if (totalIncome === totalExpense && totalIncome > 0) {
-        ratioText.innerHTML = `Keuangan Anda seimbang secara pas-pasang. Saldo tersisa adalah Rp 0. Cobalah memangkas pengeluaran hiburan untuk mulai menabung dana darurat.`;
+        ratioText.innerHTML = `Keuangan Anda pas-pasan bulan ini. Saldo bersih adalah Rp 0. Cobalah memangkas pengeluaran hiburan untuk mulai menabung dana darurat.`;
+    } else if (totalIncome === 0 && totalExpense === 0) {
+        ratioText.innerHTML = `Belum ada data transaksi bulan ini. Mulai catat pemasukan dan pengeluaran harian Anda!`;
     } else {
         const deficit = totalExpense - totalIncome;
-        ratioText.innerHTML = `Pengeluaran Anda bulan ini melebihi pemasukan dengan defisit sebesar <strong class="text-rose">${formatRupiah(deficit)}</strong>. Anda menggunakan tabungan lama atau berutang. Segera evaluasi kategori pengeluaran Anda!`;
+        ratioText.innerHTML = `Pengeluaran bulan ini melebihi pemasukan dengan defisit sebesar <strong class="text-rose">${formatRupiah(deficit)}</strong>. Segera evaluasi kategori pengeluaran Anda!`;
     }
 
     // Top Expense Category Text
@@ -1882,6 +1990,8 @@ function initAuth() {
         e.preventDefault();
         const usernameInput = document.getElementById("login-username").value.trim().toLowerCase();
         const passwordInput = document.getElementById("login-password").value;
+        // Baca state checkbox "Ingat Saya"
+        const rememberMe = document.getElementById("remember-me-checkbox")?.checked ?? true;
 
         const btn = e.target.querySelector('button[type="submit"]');
         btn.disabled = true;
@@ -1890,7 +2000,14 @@ function initAuth() {
         try {
             const user = await sbLogin(usernameInput, passwordInput);
             state.currentUser = user;
-            saveState();
+
+            // Tandai sesi aktif untuk tab ini; jika rememberMe=false, flag hilang saat tab ditutup
+            sessionStorage.setItem('mk_active_session', '1');
+
+            if (rememberMe) {
+                saveState(); // simpan user ke localStorage agar nama tampil sebelum load
+            }
+
             await loadUserDataFromSupabase();
             enterMainApplication();
         } catch (err) {
@@ -1923,6 +2040,7 @@ function initAuth() {
             const user = await sbRegister(username, password, fullname, univ, avatar);
             state.currentUser = user;
             saveState();
+            sessionStorage.setItem('mk_active_session', '1'); // sesi aktif setelah register
             await loadUserDataFromSupabase();
             enterMainApplication();
 
@@ -1987,6 +2105,8 @@ function logoutUser() {
     state.savings = [];
     state.notifications = [];
     saveState();
+    // Hapus flag sesi agar auto-login tidak terpicu setelah logout
+    sessionStorage.removeItem('mk_active_session');
 
     mainAppContainer.style.opacity = "0";
     setTimeout(() => {
@@ -2017,9 +2137,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 4. Init E-Statement period selects (populates month/year options)
     initEStatementSelects();
 
-    // 5. Check active Supabase session (auto-login on page reload)
+    // 5. Cek sesi Supabase aktif + validasi flag "Ingat Saya"
+    //    mk_active_session di sessionStorage: hilang saat tab/browser ditutup
+    //    Jika tidak ada flag ini, user tidak ingin diingat → paksa logout Supabase
     const sessionUser = await sbGetCurrentSession();
-    if (sessionUser) {
+    const hasActiveFlag = sessionStorage.getItem('mk_active_session') === '1';
+
+    if (sessionUser && hasActiveFlag) {
+        // Auto-login normal
         state.currentUser = sessionUser;
         saveState();
         await loadUserDataFromSupabase();
@@ -2038,6 +2163,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         updateSavingsUI();
         updateNotificationsUI();
     } else {
+        // Tidak ada sesi, atau "Ingat Saya" tidak dicentang — tampil halaman login
+        if (sessionUser && !hasActiveFlag) {
+            // Ada sesi Supabase tapi user tidak minta diingat → hapus sesi
+            await sbLogout();
+        }
         document.getElementById("auth-container").style.display = "flex";
         document.getElementById("auth-container").style.opacity = "1";
         document.getElementById("main-app-container").style.display = "none";
