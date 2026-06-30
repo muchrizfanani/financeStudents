@@ -190,10 +190,6 @@
                     <i data-lucide="activity"></i>
                     <span>Arus Kas</span>
                 </a>
-                <a href="#" class="menu-item" data-tab="estatement">
-                    <i data-lucide="file-text"></i>
-                    <span>E-Statement</span>
-                </a>
                 <a href="#" class="menu-item logout-menu-btn" id="btn-logout">
                     <i data-lucide="log-out"></i>
                     <span>Keluar</span>
@@ -225,7 +221,6 @@
                 <div class="header-right">
                     <!-- Search Bar -->
                     <div class="search-box">
-                        <i data-lucide="search"></i>
                         <input type="text" placeholder="Cari transaksi, tabungan..." id="global-search">
                     </div>
                     
@@ -430,7 +425,10 @@
                 
                 <!-- 4. LAPORAN PAGE -->
                 <section class="tab-content" id="laporan-tab">
-                    <div class="reports-grid">
+
+                    <!-- Charts Grid (all 5 charts in one equal-2-col grid) -->
+                    <div class="reports-grid-equal">
+                        <!-- Row 1: Trend (full width) -->
                         <div class="card report-card span-2">
                             <div class="card-header-chart">
                                 <h3>Tren Keuangan Bulanan (Pemasukan vs Pengeluaran)</h3>
@@ -443,34 +441,63 @@
                                 <canvas id="trendChart"></canvas>
                             </div>
                         </div>
-                        
+
+                        <!-- Row 2: Distribusi + Arus Kas Bersih -->
                         <div class="card report-card">
-                            <h3>Distribusi Pengeluaran Kategori</h3>
+                            <h3>Distribusi Pengeluaran Bulan Ini</h3>
                             <div class="chart-wrapper doughnut-wrapper">
                                 <canvas id="categoryChart"></canvas>
                             </div>
                         </div>
+
+                        <div class="card report-card">
+                            <div class="card-header-chart">
+                                <h3>Arus Kas Bersih per Bulan</h3>
+                                <div class="chart-legend-custom">
+                                    <span class="legend-item"><span class="dot-in bg-emerald"></span> Surplus</span>
+                                    <span class="legend-item"><span class="dot-in bg-rose"></span> Defisit</span>
+                                </div>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="cashflowChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Row 3: Utilisasi Anggaran + Progress Tabungan -->
+                        <div class="card report-card">
+                            <h3>Utilisasi Anggaran Kategori Bulan Ini</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="budgetChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="card report-card">
+                            <h3>Progress Target Tabungan</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="savingsChart"></canvas>
+                            </div>
+                        </div>
                     </div>
-                    
+
                     <!-- Financial Insights Section -->
                     <div class="card report-insight-card">
                         <div class="insight-header">
                             <i data-lucide="trending-up" class="text-emerald"></i>
-                            <h3>Rekomendasi & Analisis Kesehatan Keuangan</h3>
+                            <h3>Rekomendasi &amp; Analisis Kesehatan Keuangan</h3>
                         </div>
                         <div class="insight-content">
                             <div class="insight-row">
-                                <div class="insight-badge good">Sangat Sehat</div>
+                                <div class="insight-badge good" id="insight-ratio-badge">Sangat Sehat</div>
                                 <div class="insight-text">
                                     <h4>Rasio Pemasukan vs Pengeluaran</h4>
-                                    <p id="insight-ratio-text">Pemasukan Anda bulan ini lebih besar daripada pengeluaran. Anda memiliki surplus dana sebesar Rp 500.000 untuk ditabung.</p>
+                                    <p id="insight-ratio-text">Belum ada data transaksi bulan ini.</p>
                                 </div>
                             </div>
                             <div class="insight-row">
                                 <div class="insight-badge warning" id="insight-category-badge">Perlu Diperhatikan</div>
                                 <div class="insight-text">
                                     <h4>Kategori Pengeluaran Terbesar</h4>
-                                    <p id="insight-top-expense-text">Kategori "Makanan & Minuman" merupakan pengeluaran terbesar Anda bulan ini, mengambil porsi sekitar 45% dari total pengeluaran.</p>
+                                    <p id="insight-top-expense-text">Belum ada pengeluaran bulan ini.</p>
                                 </div>
                             </div>
                             <div class="insight-row">
@@ -480,6 +507,66 @@
                                     <p>Pertimbangkan untuk membawa bekal makan siang ke kampus atau menggunakan sepeda/berjalan kaki untuk jarak tempuh dekat guna menghemat pos transportasi dan makanan.</p>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- ── E-STATEMENT SECTION (terintegrasi di Laporan) ── -->
+                    <div class="laporan-section-header">
+                        <div class="section-icon"><i data-lucide="file-text"></i></div>
+                        <div>
+                            <h3>E-Statement Keuangan</h3>
+                            <p>Ekspor laporan keuangan bulanan Anda dalam format PDF atau Excel.</p>
+                        </div>
+                        <div class="section-export-btns">
+                            <button class="btn btn-secondary" onclick="downloadExcel()">
+                                <i data-lucide="file-spreadsheet"></i> Export Excel
+                            </button>
+                            <button class="btn btn-primary" onclick="downloadPDF()">
+                                <i data-lucide="file-down"></i> Export PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title-container">
+                            <h3>Pilih Periode Laporan</h3>
+                        </div>
+                        <div class="estatement-period-row">
+                            <div class="form-group" style="margin-bottom:0; flex:1;">
+                                <label>Bulan</label>
+                                <div class="select-wrapper">
+                                    <select id="estatement-month"></select>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0; flex:0 0 140px;">
+                                <label>Tahun</label>
+                                <div class="select-wrapper">
+                                    <select id="estatement-year"></select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="summary-grid" id="estatement-summary-cards" style="margin-bottom:20px;"></div>
+
+                    <div class="card">
+                        <div class="card-title-container">
+                            <h3>Preview Transaksi</h3>
+                            <span id="estatement-period-label" style="font-size:13px; color:var(--text-muted);"></span>
+                        </div>
+                        <div class="table-container">
+                            <table class="main-table">
+                                <thead>
+                                    <tr>
+                                        <th>Tanggal</th>
+                                        <th>Kategori</th>
+                                        <th>Deskripsi</th>
+                                        <th>Nominal</th>
+                                        <th>Tipe</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="estatement-table-body"></tbody>
+                            </table>
                         </div>
                     </div>
                 </section>
@@ -523,8 +610,8 @@
                 <section class="tab-content" id="aruskas-tab">
                     <div class="page-actions-bar">
                         <div class="info-text">
-                            <h3>Analisis Arus Kas 6 Bulan</h3>
-                            <p>Pantau tren pemasukan dan pengeluaran, serta proyeksi kapan saldo Anda akan habis.</p>
+                            <h3>Analisis Arus Kas</h3>
+                            <p>Pantau tren pemasukan dan pengeluaran berdasarkan periode transaksi yang ada, serta proyeksi saldo ke depan.</p>
                         </div>
                     </div>
 
@@ -553,66 +640,6 @@
                     <div class="card report-insight-card" id="cashflow-projection-card"></div>
                 </section>
 
-                <!-- 8. E-STATEMENT PAGE -->
-                <section class="tab-content" id="estatement-tab">
-                    <div class="page-actions-bar">
-                        <div class="info-text">
-                            <h3>E-Statement Keuangan</h3>
-                            <p>Ekspor laporan keuangan bulanan Anda dalam format PDF atau Excel.</p>
-                        </div>
-                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                            <button class="btn btn-secondary" onclick="downloadExcel()">
-                                <i data-lucide="file-spreadsheet"></i> Export Excel
-                            </button>
-                            <button class="btn btn-primary" onclick="downloadPDF()">
-                                <i data-lucide="file-down"></i> Export PDF
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-title-container">
-                            <h3>Pilih Periode Laporan</h3>
-                        </div>
-                        <div class="estatement-period-row">
-                            <div class="form-group" style="margin-bottom:0; flex:1;">
-                                <label>Bulan</label>
-                                <div class="select-wrapper">
-                                    <select id="estatement-month"></select>
-                                </div>
-                            </div>
-                            <div class="form-group" style="margin-bottom:0; flex:0 0 140px;">
-                                <label>Tahun</label>
-                                <div class="select-wrapper">
-                                    <select id="estatement-year"></select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="summary-grid" id="estatement-summary-cards"></div>
-
-                    <div class="card">
-                        <div class="card-title-container">
-                            <h3>Preview Transaksi</h3>
-                            <span id="estatement-period-label" style="font-size:13px; color:var(--text-muted);"></span>
-                        </div>
-                        <div class="table-container">
-                            <table class="main-table">
-                                <thead>
-                                    <tr>
-                                        <th>Tanggal</th>
-                                        <th>Kategori</th>
-                                        <th>Deskripsi</th>
-                                        <th>Nominal</th>
-                                        <th>Tipe</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="estatement-table-body"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
 
             </div>
         </main>
@@ -652,7 +679,10 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="trans-amount">Jumlah (Rp)</label>
-                        <input type="number" id="trans-amount" placeholder="0" min="1" required>
+                        <div class="amount-input-wrapper">
+                            <span class="currency-prefix">Rp</span>
+                            <input type="text" id="trans-amount" placeholder="0" data-amount-input inputmode="numeric" autocomplete="off" required>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="trans-category">Kategori</label>
@@ -695,7 +725,10 @@
                 </div>
                 <div class="form-group">
                     <label for="budget-limit">Batas Anggaran Bulanan (Rp)</label>
-                    <input type="number" id="budget-limit" placeholder="0" min="0" required>
+                    <div class="amount-input-wrapper">
+                        <span class="currency-prefix">Rp</span>
+                        <input type="text" id="budget-limit" placeholder="0" data-amount-input inputmode="numeric" autocomplete="off" required>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-close-modal>Batal</button>
@@ -720,7 +753,10 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="saving-target">Target Uang (Rp)</label>
-                        <input type="number" id="saving-target" placeholder="0" min="1000" required>
+                        <div class="amount-input-wrapper">
+                            <span class="currency-prefix">Rp</span>
+                            <input type="text" id="saving-target" placeholder="0" data-amount-input inputmode="numeric" autocomplete="off" required>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="saving-deadline">Target Tanggal Tercapai</label>
@@ -729,7 +765,10 @@
                 </div>
                 <div class="form-group">
                     <label for="saving-start">Saldo Awal Celengan (Rp - Opsional)</label>
-                    <input type="number" id="saving-start" placeholder="0" min="0" value="0">
+                    <div class="amount-input-wrapper">
+                        <span class="currency-prefix">Rp</span>
+                        <input type="text" id="saving-start" placeholder="0" data-amount-input inputmode="numeric" autocomplete="off">
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-close-modal>Batal</button>
@@ -757,7 +796,10 @@
                 
                 <div class="form-group">
                     <label for="saving-action-amount">Jumlah Uang (Rp)</label>
-                    <input type="number" id="saving-action-amount" placeholder="0" min="1" required>
+                    <div class="amount-input-wrapper">
+                        <span class="currency-prefix">Rp</span>
+                        <input type="text" id="saving-action-amount" placeholder="0" data-amount-input inputmode="numeric" autocomplete="off" required>
+                    </div>
                     <span class="helper-text" id="saving-action-helper">Uang akan dialihkan dari/ke Saldo Utama Anda.</span>
                 </div>
                 <div class="modal-footer">

@@ -181,73 +181,38 @@ function sbClearAllNotifs(userId) {
 // ==========================================
 
 async function sbSeedDefaultData(userId) {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    // Tanggal awal bulan berjalan (untuk transaksi pemasukan awal)
-    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const deadline1 = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const deadline2 = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const t = Date.now();
 
-    // Transaksi default agar dashboard tidak kosong saat pertama login
-    const transactions = [
-        {
-            id: `tx-${t}-1`, user_id: userId,
-            title: 'Uang Saku Bulanan', type: 'pemasukan',
-            category: 'Lainnya', amount: 1500000, date: firstOfMonth
-        },
-        {
-            id: `tx-${t}-2`, user_id: userId,
-            title: 'Makan Siang Pertama', type: 'pengeluaran',
-            category: 'Makanan', amount: 25000, date: today
-        }
-    ];
-
-    // Anggaran default per kategori
+    // Akun baru mulai dengan data kosong (semua nilai 0 / kosong)
+    // Hanya seed anggaran kategori dengan limit 0 agar halaman Anggaran tidak kosong total
     const budgets = [
-        { user_id: userId, category: 'Makanan',      limit_amount: 500000  },
-        { user_id: userId, category: 'Transportasi', limit_amount: 200000  },
-        { user_id: userId, category: 'Pendidikan',   limit_amount: 300000  },
-        { user_id: userId, category: 'Kost',         limit_amount: 800000  },
-        { user_id: userId, category: 'Hiburan',      limit_amount: 250000  },
-        { user_id: userId, category: 'Lainnya',      limit_amount: 400000  }
-    ];
-
-    // Target tabungan contoh
-    const savings = [
-        {
-            id: `sv-${t}`, user_id: userId,
-            name: 'Tabungan Laptop Baru', target: 6000000,
-            current: 0, deadline: deadline1
-        },
-        {
-            id: `sv-${t}-2`, user_id: userId,
-            name: 'Dana Darurat', target: 1000000,
-            current: 0, deadline: deadline2
-        }
+        { user_id: userId, category: 'Makanan',      limit_amount: 0 },
+        { user_id: userId, category: 'Transportasi', limit_amount: 0 },
+        { user_id: userId, category: 'Pendidikan',   limit_amount: 0 },
+        { user_id: userId, category: 'Kost',         limit_amount: 0 },
+        { user_id: userId, category: 'Hiburan',      limit_amount: 0 },
+        { user_id: userId, category: 'Lainnya',      limit_amount: 0 }
     ];
 
     const notifications = [
         {
             id: `nt-${t}`, user_id: userId,
             title: 'Selamat Datang di MajuKeuangan!',
-            message: 'Akun Anda berhasil dibuat. Anggaran dan celengan default telah disiapkan. Mulai catat transaksi harian Anda!',
+            message: 'Akun Anda berhasil dibuat. Mulai catat transaksi harian, atur batas anggaran, dan buat target tabungan pertama Anda!',
             type: 'success', read: false, time: 'Baru saja'
         }
     ];
 
-    // Insert semua tabel sekaligus; tangkap error tiap tabel agar tidak membatalkan yang lain
+    // Hanya seed budgets dan notifikasi; transaksi & tabungan dimulai dari 0
     const results = await Promise.allSettled([
-        sb.from('transactions').insert(transactions),
         sb.from('budgets').insert(budgets),
-        sb.from('savings').insert(savings),
         sb.from('notifications').insert(notifications)
     ]);
 
     results.forEach((r, i) => {
-        const names = ['transactions','budgets','savings','notifications'];
+        const names = ['budgets', 'notifications'];
         if (r.status === 'rejected' || r.value?.error) {
-            console.warn(`Seed ${names[i]} error:`, r.reason || r.value.error.message);
+            console.warn(`Seed ${names[i]} error:`, r.reason || r.value?.error?.message);
         }
     });
 }

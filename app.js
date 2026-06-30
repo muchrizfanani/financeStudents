@@ -73,12 +73,18 @@ async function loadUserDataFromSupabase() {
 }
 
 // Global chart variables for Chart.js instances
-let trendChart = null;
+let trendChart    = null;
 let categoryChart = null;
+let cashflowChart = null;
+let budgetChart   = null;
+let savingsChart  = null;
 
 // Pagination variables
 let currentPage = 1;
 const itemsPerPage = 8;
+
+// All categories (canonical list)
+const ALL_CATEGORIES = ["Makanan", "Transportasi", "Pendidikan", "Kost", "Hiburan", "Lainnya"];
 
 // ==========================================
 // UTILITY FUNCTIONS
@@ -134,6 +140,51 @@ function refreshIcons() {
 }
 
 // ==========================================
+// IDR AMOUNT INPUT AUTO-FORMATTER
+// ==========================================
+
+// Format a number string into IDR dot-separated string (e.g. 1500000 → "1.500.000")
+function formatAmountInput(input) {
+    const raw = input.value.replace(/[^\d]/g, '');
+    if (!raw) {
+        input.value = '';
+        input.dataset.rawValue = '0';
+        return;
+    }
+    const num = parseInt(raw, 10);
+    input.dataset.rawValue = String(num);
+    input.value = num.toLocaleString('id-ID');
+}
+
+// Set a numeric value on a formatted input (used when pre-filling edit forms)
+function setAmountValue(input, num) {
+    if (!input) return;
+    const n = Number(num) || 0;
+    input.dataset.rawValue = String(n);
+    input.value = n > 0 ? n.toLocaleString('id-ID') : '';
+}
+
+// Read the raw numeric value from a formatted input
+function getAmountValue(input) {
+    if (!input) return 0;
+    const raw = input.dataset.rawValue || input.value.replace(/[^\d]/g, '');
+    return parseInt(raw || '0', 10);
+}
+
+// Attach formatter listener to an input
+function attachAmountFormatter(input) {
+    if (!input) return;
+    input.addEventListener('input', () => formatAmountInput(input));
+}
+
+// Attach formatters to all static amount inputs in modals
+function initAmountFormatters() {
+    ['trans-amount', 'budget-limit', 'saving-target', 'saving-start', 'saving-action-amount'].forEach(id => {
+        attachAmountFormatter(document.getElementById(id));
+    });
+}
+
+// ==========================================
 // MONTH DATA HELPERS
 // ==========================================
 
@@ -159,6 +210,42 @@ function getLastNMonths(n) {
         result.push({ month: m + 1, year: y, label: `${MONTH_NAMES[m]} ${y}`, ...getMonthData(m + 1, y) });
     }
     return result;
+}
+
+// Returns only months that have at least one transaction (sorted chronologically)
+function getDataMonths() {
+    if (state.transactions.length === 0) return [];
+    const monthSet = new Set();
+    state.transactions.forEach(t => {
+        const d = new Date(t.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        monthSet.add(key);
+    });
+    return Array.from(monthSet).sort().map(key => {
+        const [y, m] = key.split('-').map(Number);
+        return { month: m, year: y, label: `${MONTH_NAMES[m - 1]} ${y}`, ...getMonthData(m, y) };
+    });
+}
+
+// ==========================================
+// GLOBAL UI SYNC HELPER
+// ==========================================
+
+// Refresh all pages that are currently active or always-visible after any data change
+function refreshAllUI() {
+    updateDashboardUI();
+    updateTransactionsUI();
+    updateBudgetsUI();
+    updateSavingsUI();
+    updateNotificationsUI();
+    // Conditionally refresh heavier pages only when active
+    if (document.getElementById("laporan-tab")?.classList.contains("active")) {
+        renderCharts();
+        updateEStatementUI();
+    }
+    if (document.getElementById("aruskas-tab")?.classList.contains("active")) {
+        updateArusKasUI();
+    }
 }
 
 // ==========================================
@@ -189,13 +276,12 @@ function initNavigation() {
 
             // Update Header Title
             const title = item.querySelector("span").textContent;
-            const titleMap = { "notifikasi": "Pusat Notifikasi", "aruskas": "Arus Kas", "estatement": "E-Statement" };
+            const titleMap = { "notifikasi": "Pusat Notifikasi", "aruskas": "Arus Kas" };
             pageTitle.textContent = titleMap[targetTab] || title;
 
             // Trigger specific page load actions
-            if (targetTab === "laporan") renderCharts();
+            if (targetTab === "laporan") { renderCharts(); updateEStatementUI(); }
             if (targetTab === "aruskas") updateArusKasUI();
-            if (targetTab === "estatement") updateEStatementUI();
 
             // Close sidebar on mobile
             if (window.innerWidth <= 1024) {
@@ -245,8 +331,8 @@ function initTheme() {
             localStorage.setItem("mk_theme", "dark");
         }
 
-        // Re-render charts to adjust gridline/label colors according to new theme
-        if (document.getElementById("laporan-tab").classList.contains("active")) {
+        // Re-render charts with new theme colors
+        if (document.getElementById("laporan-tab")?.classList.contains("active")) {
             renderCharts();
         }
     });
@@ -416,8 +502,7 @@ function updateDashboardUI() {
     const dashMonth = nowDash.getMonth() + 1;
     const dashYear  = nowDash.getFullYear();
 
-    const categories = Object.keys(state.budgets).filter(k => k !== "__total__");
-    categories.slice(0, 4).forEach(cat => {
+    ALL_CATEGORIES.slice(0, 4).forEach(cat => {
         const limit = state.budgets[cat] || 0;
         const spent = state.transactions
             .filter(t => {
@@ -679,8 +764,7 @@ function updateBudgetsUI() {
             }
         }
 
-        globalSection.innerHTML = `
-            <div class="card global-budget-card">
+        globalSection.innerHTML = `<div class="card global-budget-card">
                 <div class="global-budget-header">
                     <div class="global-budget-title">
                         <i data-lucide="shield-check"></i>
@@ -691,8 +775,8 @@ function updateBudgetsUI() {
                 <p style="font-size:13px; color:var(--text-muted); margin:8px 0 16px;">Atur batas maksimum total pengeluaran per bulan. Sistem akan memberi peringatan bertingkat saat mendekati batas.</p>
                 <div class="global-budget-input-row">
                     <div style="flex:1; position:relative;">
-                        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:13px; pointer-events:none;">Rp</span>
-                        <input type="number" id="global-budget-input" value="${globalLimit > 0 ? globalLimit : ''}" placeholder="Contoh: 2000000" min="0" class="form-input" style="padding-left:40px; width:100%; box-sizing:border-box;">
+                        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:13px; pointer-events:none; z-index:1;">Rp</span>
+                        <input type="text" id="global-budget-input" value="${globalLimit > 0 ? globalLimit.toLocaleString('id-ID') : ''}" data-raw-value="${globalLimit}" placeholder="Contoh: 2.000.000" inputmode="numeric" autocomplete="off" class="form-input" style="padding-left:40px; width:100%; box-sizing:border-box;">
                     </div>
                     <button class="btn btn-primary" onclick="saveGlobalBudget()">Simpan Batas</button>
                 </div>
@@ -710,6 +794,9 @@ function updateBudgetsUI() {
                 ` : ''}
             </div>
         `;
+        // Attach IDR formatter to dynamically rendered global budget input
+        const gInput = document.getElementById("global-budget-input");
+        if (gInput) attachAmountFormatter(gInput);
         refreshIcons();
     }
 
@@ -721,8 +808,7 @@ function updateBudgetsUI() {
     const curMonth = nowBudget.getMonth() + 1;
     const curYear  = nowBudget.getFullYear();
 
-    const categories = Object.keys(state.budgets).filter(k => k !== "__total__");
-    categories.forEach(cat => {
+    ALL_CATEGORIES.forEach(cat => {
         const limit = state.budgets[cat] || 0;
         const spent = state.transactions
             .filter(t => {
@@ -967,11 +1053,18 @@ document.getElementById("noti-quick-btn").addEventListener("click", () => {
 // ==========================================
 
 function updateArusKasUI() {
-    const months = getLastNMonths(6);
+    // Only show months where the user actually has transactions
+    const months = getDataMonths();
+    const n = months.length;
 
-    const avgIncome  = months.reduce((s, m) => s + m.income,  0) / 6;
-    const avgExpense = months.reduce((s, m) => s + m.expense, 0) / 6;
-    const avgNet     = avgIncome - avgExpense;
+    const totalIncome  = months.reduce((s, m) => s + m.income,  0);
+    const totalExpense = months.reduce((s, m) => s + m.expense, 0);
+    const avgIncome    = n > 0 ? totalIncome  / n : 0;
+    const avgExpense   = n > 0 ? totalExpense / n : 0;
+    const avgNet       = avgIncome - avgExpense;
+    const periodLabel  = n > 0
+        ? `${months[0].label} – ${months[n - 1].label}`
+        : 'Belum ada data';
 
     // Summary cards
     const summaryEl = document.getElementById("cashflow-summary-cards");
@@ -983,7 +1076,7 @@ function updateArusKasUI() {
                 <div class="card-icon"><i data-lucide="trending-up"></i></div>
             </div>
             <h2 class="amount text-emerald">${formatRupiah(avgIncome)}</h2>
-            <div class="card-footer"><span class="footer-desc">Per bulan (6 bulan terakhir)</span></div>
+            <div class="card-footer"><span class="footer-desc">${n > 0 ? `Per bulan (${periodLabel})` : 'Belum ada transaksi'}</span></div>
         </div>
         <div class="summary-card expense">
             <div class="card-header">
@@ -991,7 +1084,7 @@ function updateArusKasUI() {
                 <div class="card-icon"><i data-lucide="trending-down"></i></div>
             </div>
             <h2 class="amount text-rose">${formatRupiah(avgExpense)}</h2>
-            <div class="card-footer"><span class="footer-desc">Per bulan (6 bulan terakhir)</span></div>
+            <div class="card-footer"><span class="footer-desc">${n > 0 ? `Per bulan (${periodLabel})` : 'Belum ada transaksi'}</span></div>
         </div>
         <div class="summary-card ${avgNet >= 0 ? 'balance' : 'expense'}">
             ${avgNet >= 0 ? '<div class="card-glow"></div>' : ''}
@@ -1004,24 +1097,29 @@ function updateArusKasUI() {
         </div>
     `;
 
-    // Cashflow table
+    // Cashflow table — only months with data
     const tableBody = document.getElementById("cashflow-table-body");
     if (!tableBody) return;
     tableBody.innerHTML = "";
-    months.forEach(m => {
-        const netColor   = m.net >= 0 ? 'var(--emerald)' : 'var(--rose)';
-        const statusText = m.net >= 0 ? 'Surplus' : 'Defisit';
-        const statusCls  = m.net >= 0 ? 'pemasukan' : 'pengeluaran';
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td><strong>${m.label}</strong></td>
-            <td class="amount-text pemasukan">+ ${formatRupiah(m.income)}</td>
-            <td class="amount-text pengeluaran">- ${formatRupiah(m.expense)}</td>
-            <td style="color:${netColor}; font-weight:600;">${m.net >= 0 ? '+' : ''}${formatRupiah(m.net)}</td>
-            <td><span class="badge-type ${statusCls}">${statusText}</span></td>
-        `;
-        tableBody.appendChild(tr);
-    });
+
+    if (months.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:40px 0;">Belum ada data transaksi. Tambahkan transaksi untuk melihat riwayat arus kas.</td></tr>`;
+    } else {
+        months.forEach(m => {
+            const netColor   = m.net >= 0 ? 'var(--emerald)' : 'var(--rose)';
+            const statusText = m.net >= 0 ? 'Surplus' : 'Defisit';
+            const statusCls  = m.net >= 0 ? 'pemasukan' : 'pengeluaran';
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td><strong>${m.label}</strong></td>
+                <td class="amount-text pemasukan">+ ${formatRupiah(m.income)}</td>
+                <td class="amount-text pengeluaran">- ${formatRupiah(m.expense)}</td>
+                <td style="color:${netColor}; font-weight:600;">${m.net >= 0 ? '+' : ''}${formatRupiah(m.net)}</td>
+                <td><span class="badge-type ${statusCls}">${statusText}</span></td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
 
     // Projection card
     const financials = calculateFinancials();
@@ -1301,7 +1399,7 @@ window.saveGlobalBudget = function() {
     const input = document.getElementById("global-budget-input");
     if (!input) return;
 
-    const limit = parseInt(input.value);
+    const limit = getAmountValue(input);
     if (isNaN(limit) || limit < 0) {
         alert("Masukkan angka batas anggaran yang valid.");
         return;
@@ -1326,27 +1424,25 @@ window.saveGlobalBudget = function() {
 function renderCharts() {
     const isDark = document.body.classList.contains("dark-theme");
     const textColor = isDark ? "#94a3b8" : "#475569";
-    const gridColor = isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)";
+    const gridColor = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+    const tooltipBg = isDark ? '#11131c' : '#ffffff';
+    const tooltipBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
 
-    // Chart.js global overrides
     Chart.defaults.color = textColor;
     Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
     Chart.defaults.font.size = 12;
 
-    // --- 1. PREPARE DATA ---
+    const CATEGORY_COLORS = ['#6366f1','#f59e0b','#10b981','#0ea5e9','#ec4899','#94a3b8'];
 
-    // Trend bulanan: ambil 6 bulan terakhir (sama dengan halaman Arus Kas)
-    const trendMonths   = getLastNMonths(6);
-    const trendLabels   = trendMonths.map(m => MONTH_NAMES[m.month - 1].slice(0, 3) + ' ' + String(m.year).slice(-2));
-    const monthlyIncome  = trendMonths.map(m => m.income);
-    const monthlyExpense = trendMonths.map(m => m.expense);
+    // ── Shared data ──────────────────────────────────────────────
+    const now        = new Date();
+    const chartM     = now.getMonth() + 1;
+    const chartY     = now.getFullYear();
+    const dataMonths = getDataMonths(); // only months with data
+    const trend6     = getLastNMonths(6);
 
-    // Distribusi pengeluaran per kategori bulan berjalan (untuk doughnut)
-    const nowChart  = new Date();
-    const chartM    = nowChart.getMonth() + 1;
-    const chartY    = nowChart.getFullYear();
-    const categories = Object.keys(state.budgets).filter(k => k !== "__total__");
-    const categoryExpenseData = categories.map(cat =>
+    // Per-category expense this month (using ALL_CATEGORIES for consistent ordering)
+    const categoryExpenseData = ALL_CATEGORIES.map(cat =>
         state.transactions
             .filter(t => {
                 const d = new Date(t.date);
@@ -1356,142 +1452,88 @@ function renderCharts() {
             .reduce((sum, t) => sum + t.amount, 0)
     );
 
-    // --- 2. RENDER TREND LINE CHART (6 bulan terakhir) ---
+    // ── 1. TREND LINE CHART (6 months) ───────────────────────────
     const trendCtx = document.getElementById("trendChart")?.getContext("2d");
     if (trendCtx) {
         if (trendChart) trendChart.destroy();
-
         trendChart = new Chart(trendCtx, {
             type: 'line',
             data: {
-                labels: trendLabels,
+                labels: trend6.map(m => MONTH_NAMES[m.month - 1].slice(0, 3) + ' ' + String(m.year).slice(-2)),
                 datasets: [
                     {
                         label: 'Pemasukan',
-                        data: monthlyIncome,
-                        borderColor: '#10b981',
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                        borderWidth: 3,
-                        tension: 0.3,
-                        fill: true,
+                        data: trend6.map(m => m.income),
+                        borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)',
+                        borderWidth: 3, tension: 0.3, fill: true,
                         pointBackgroundColor: '#10b981',
-                        pointBorderColor: isDark ? '#08090d' : '#ffffff',
-                        pointBorderWidth: 2,
-                        pointRadius: 5,
-                        pointHoverRadius: 7
+                        pointBorderColor: isDark ? '#08090d' : '#fff',
+                        pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7
                     },
                     {
                         label: 'Pengeluaran',
-                        data: monthlyExpense,
-                        borderColor: '#f43f5e',
-                        backgroundColor: 'rgba(244, 63, 94, 0.1)',
-                        borderWidth: 3,
-                        tension: 0.3,
-                        fill: true,
+                        data: trend6.map(m => m.expense),
+                        borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,0.1)',
+                        borderWidth: 3, tension: 0.3, fill: true,
                         pointBackgroundColor: '#f43f5e',
-                        pointBorderColor: isDark ? '#08090d' : '#ffffff',
-                        pointBorderWidth: 2,
-                        pointRadius: 5,
-                        pointHoverRadius: 7
+                        pointBorderColor: isDark ? '#08090d' : '#fff',
+                        pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7
                     }
                 ]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
                 plugins: {
-                    legend: {
-                        display: false // We use our custom legend in HTML
-                    },
+                    legend: { display: false },
                     tooltip: {
-                        padding: 12,
-                        cornerRadius: 8,
-                        backgroundColor: isDark ? '#11131c' : '#ffffff',
-                        titleColor: isDark ? '#ffffff' : '#0f172a',
-                        bodyColor: isDark ? '#94a3b8' : '#475569',
-                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-                        borderWidth: 1,
-                        callbacks: {
-                            label: function(context) {
-                                return ` ${context.dataset.label}: ${formatRupiah(context.raw)}`;
-                            }
-                        }
+                        padding: 12, cornerRadius: 8,
+                        backgroundColor: tooltipBg,
+                        titleColor: isDark ? '#fff' : '#0f172a',
+                        bodyColor: textColor,
+                        borderColor: tooltipBorder, borderWidth: 1,
+                        callbacks: { label: ctx => ` ${ctx.dataset.label}: ${formatRupiah(ctx.raw)}` }
                     }
                 },
                 scales: {
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    },
+                    x: { grid: { display: false } },
                     y: {
-                        grid: {
-                            color: gridColor
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                if (value >= 1000000) return `Rp ${value / 1000000}jt`;
-                                if (value >= 1000) return `Rp ${value / 1000}rb`;
-                                return value;
-                            }
-                        }
+                        grid: { color: gridColor },
+                        ticks: { callback: v => v >= 1e6 ? `Rp ${v/1e6}jt` : v >= 1e3 ? `Rp ${v/1e3}rb` : v }
                     }
                 }
             }
         });
     }
 
-    // --- 3. RENDER CATEGORIES DOUGHNUT CHART ---
+    // ── 2. DISTRIBUSI DOUGHNUT CHART (current month, ALL_CATEGORIES) ─
     const categoryCtx = document.getElementById("categoryChart")?.getContext("2d");
     if (categoryCtx) {
         if (categoryChart) categoryChart.destroy();
-
-        // Check if there is any expense
-        const totalExp = categoryExpenseData.reduce((a,b) => a+b, 0);
-
+        const totalExp = categoryExpenseData.reduce((a, b) => a + b, 0);
         categoryChart = new Chart(categoryCtx, {
             type: 'doughnut',
             data: {
-                labels: categories,
+                labels: ALL_CATEGORIES,
                 datasets: [{
-                    data: totalExp > 0 ? categoryExpenseData : [1, 1, 1, 1, 1, 1], // fallback template if empty
-                    backgroundColor: [
-                        '#6366f1', // Makanan
-                        '#f59e0b', // Transportasi
-                        '#10b981', // Pendidikan
-                        '#0ea5e9', // Kost
-                        '#ec4899', // Hiburan
-                        '#94a3b8'  // Lainnya
-                    ],
+                    data: totalExp > 0 ? categoryExpenseData : [1, 1, 1, 1, 1, 1],
+                    backgroundColor: CATEGORY_COLORS,
                     borderWidth: isDark ? 3 : 2,
-                    borderColor: isDark ? '#12141c' : '#ffffff',
+                    borderColor: isDark ? '#12141c' : '#fff',
                     hoverOffset: 8
                 }]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
                 plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 15,
-                            usePointStyle: true,
-                            pointStyle: 'circle'
-                        }
-                    },
+                    legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyle: 'circle' } },
                     tooltip: {
-                        padding: 12,
-                        cornerRadius: 8,
-                        backgroundColor: isDark ? '#11131c' : '#ffffff',
-                        bodyColor: isDark ? '#ffffff' : '#0f172a',
-                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-                        borderWidth: 1,
+                        padding: 12, cornerRadius: 8,
+                        backgroundColor: tooltipBg, bodyColor: isDark ? '#fff' : '#0f172a',
+                        borderColor: tooltipBorder, borderWidth: 1,
                         callbacks: {
-                            label: function(context) {
-                                if (totalExp === 0) return ` ${context.label}: Rp 0 (Belum ada data)`;
-                                const pct = Math.round((context.raw / totalExp) * 100);
-                                return ` ${context.label}: ${formatRupiah(context.raw)} (${pct}%)`;
+                            label: ctx => {
+                                if (totalExp === 0) return ` ${ctx.label}: Belum ada data`;
+                                return ` ${ctx.label}: ${formatRupiah(ctx.raw)} (${Math.round((ctx.raw / totalExp) * 100)}%)`;
                             }
                         }
                     }
@@ -1501,17 +1543,169 @@ function renderCharts() {
         });
     }
 
-    // --- 4. HEALTH INSIGHT LOGIC (gunakan data bulan berjalan) ---
-    const nowInsight = new Date();
-    const insightMonth = getMonthData(nowInsight.getMonth() + 1, nowInsight.getFullYear());
-    updateFinancialInsights(insightMonth.income, insightMonth.expense, categoryExpenseData, categories);
+    // ── 3. ARUS KAS BERSIH BAR CHART (data months) ───────────────
+    const cashflowCtx = document.getElementById("cashflowChart")?.getContext("2d");
+    if (cashflowCtx) {
+        if (cashflowChart) cashflowChart.destroy();
+        const months = dataMonths.length > 0 ? dataMonths : trend6;
+        const netData = months.map(m => m.net);
+        cashflowChart = new Chart(cashflowCtx, {
+            type: 'bar',
+            data: {
+                labels: months.map(m => MONTH_NAMES[m.month - 1].slice(0, 3) + ' ' + String(m.year).slice(-2)),
+                datasets: [{
+                    label: 'Arus Kas Bersih',
+                    data: netData,
+                    backgroundColor: netData.map(n => n >= 0 ? 'rgba(16,185,129,0.75)' : 'rgba(244,63,94,0.75)'),
+                    borderColor:     netData.map(n => n >= 0 ? '#10b981' : '#f43f5e'),
+                    borderWidth: 2, borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        padding: 10, cornerRadius: 8,
+                        backgroundColor: tooltipBg, bodyColor: textColor,
+                        borderColor: tooltipBorder, borderWidth: 1,
+                        callbacks: { label: ctx => ` ${ctx.raw >= 0 ? 'Surplus' : 'Defisit'}: ${formatRupiah(Math.abs(ctx.raw))}` }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: {
+                        grid: { color: gridColor },
+                        ticks: { callback: v => v >= 1e6 ? `${v/1e6}jt` : v >= 1e3 ? `${v/1e3}rb` : v }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── 4. UTILISASI ANGGARAN HORIZONTAL BAR ─────────────────────
+    const budgetCtx = document.getElementById("budgetChart")?.getContext("2d");
+    if (budgetCtx) {
+        if (budgetChart) budgetChart.destroy();
+        const budgetSpent  = ALL_CATEGORIES.map(cat => categoryExpenseData[ALL_CATEGORIES.indexOf(cat)]);
+        const budgetLimits = ALL_CATEGORIES.map(cat => state.budgets[cat] || 0);
+        const budgetPcts   = ALL_CATEGORIES.map((_, i) =>
+            budgetLimits[i] > 0 ? Math.round((budgetSpent[i] / budgetLimits[i]) * 100) : 0
+        );
+        budgetChart = new Chart(budgetCtx, {
+            type: 'bar',
+            data: {
+                labels: ALL_CATEGORIES,
+                datasets: [
+                    {
+                        label: 'Terpakai',
+                        data: budgetSpent,
+                        backgroundColor: budgetPcts.map(p => p >= 100 ? 'rgba(244,63,94,0.8)' : p >= 80 ? 'rgba(245,158,11,0.8)' : 'rgba(16,185,129,0.8)'),
+                        borderRadius: 4, barPercentage: 0.6
+                    },
+                    {
+                        label: 'Batas',
+                        data: budgetLimits,
+                        backgroundColor: 'rgba(148,163,184,0.2)',
+                        borderColor: 'rgba(148,163,184,0.5)',
+                        borderWidth: 1, borderRadius: 4, barPercentage: 0.6
+                    }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { position: 'bottom', labels: { usePointStyle: true, padding: 12 } },
+                    tooltip: {
+                        padding: 10, cornerRadius: 8,
+                        backgroundColor: tooltipBg, bodyColor: textColor,
+                        borderColor: tooltipBorder, borderWidth: 1,
+                        callbacks: { label: ctx => ` ${ctx.dataset.label}: ${formatRupiah(ctx.raw)}` }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: gridColor },
+                        ticks: { callback: v => v >= 1e6 ? `${v/1e6}jt` : v >= 1e3 ? `${v/1e3}rb` : v }
+                    },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // ── 5. PROGRESS TABUNGAN HORIZONTAL BAR ──────────────────────
+    const savingsCtx = document.getElementById("savingsChart")?.getContext("2d");
+    if (savingsCtx) {
+        if (savingsChart) savingsChart.destroy();
+        const svLabels  = state.savings.map(s => s.name.length > 22 ? s.name.slice(0, 19) + '…' : s.name);
+        const svCurrent = state.savings.map(s => s.current);
+        const svTarget  = state.savings.map(s => s.target);
+
+        if (state.savings.length === 0) {
+            // Draw empty state text on canvas
+            savingsCtx.clearRect(0, 0, savingsCtx.canvas.width, savingsCtx.canvas.height);
+            savingsCtx.fillStyle = textColor;
+            savingsCtx.font = "14px 'Plus Jakarta Sans', sans-serif";
+            savingsCtx.textAlign = "center";
+            savingsCtx.fillText("Belum ada target tabungan.", savingsCtx.canvas.width / 2, 80);
+            savingsChart = null;
+        } else {
+            savingsChart = new Chart(savingsCtx, {
+                type: 'bar',
+                data: {
+                    labels: svLabels,
+                    datasets: [
+                        {
+                            label: 'Terkumpul',
+                            data: svCurrent,
+                            backgroundColor: 'rgba(99,102,241,0.8)',
+                            borderRadius: 4, barPercentage: 0.6
+                        },
+                        {
+                            label: 'Target',
+                            data: svTarget,
+                            backgroundColor: 'rgba(148,163,184,0.2)',
+                            borderColor: 'rgba(148,163,184,0.5)',
+                            borderWidth: 1, borderRadius: 4, barPercentage: 0.6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 12 } },
+                        tooltip: {
+                            padding: 10, cornerRadius: 8,
+                            backgroundColor: tooltipBg, bodyColor: textColor,
+                            borderColor: tooltipBorder, borderWidth: 1,
+                            callbacks: { label: ctx => ` ${ctx.dataset.label}: ${formatRupiah(ctx.raw)}` }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: gridColor },
+                            ticks: { callback: v => v >= 1e6 ? `${v/1e6}jt` : v >= 1e3 ? `${v/1e3}rb` : v }
+                        },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+    }
+
+    // ── 6. FINANCIAL INSIGHTS (current month) ────────────────────
+    const insightMonth = getMonthData(chartM, chartY);
+    updateFinancialInsights(insightMonth.income, insightMonth.expense, categoryExpenseData, ALL_CATEGORIES);
 }
 
 // Menerima nilai tunggal (bukan array) dari data bulan berjalan
 function updateFinancialInsights(totalIncome, totalExpense, expenseData, categories) {
 
-    // Badge kesehatan finansial (dinamis, bukan hardcoded "Sangat Sehat")
-    const ratioBadge = document.querySelector(".insight-row:first-child .insight-badge");
+    // Badge kesehatan finansial (dinamis)
+    const ratioBadge = document.getElementById("insight-ratio-badge");
     if (ratioBadge) {
         if (totalIncome === 0 && totalExpense === 0) {
             ratioBadge.textContent = "Belum Ada Data";
@@ -1621,6 +1815,9 @@ function openTransactionModal(defaultType = "pengeluaran") {
     document.getElementById("trans-id").value = "";
     document.getElementById("transaction-modal-title").textContent = "Tambah Transaksi Baru";
     document.getElementById("trans-date").value = new Date().toISOString().split('T')[0];
+    // Clear formatted amount state
+    const amtInput = document.getElementById("trans-amount");
+    if (amtInput) { amtInput.value = ""; amtInput.dataset.rawValue = "0"; }
 
     // Setup Type Toggle active styling
     const expenseBtn = document.getElementById("type-expense-btn");
@@ -1656,13 +1853,19 @@ document.getElementById("btn-add-transaction").addEventListener("click", () => {
 // Form Transaction Submit
 document.getElementById("form-transaction").addEventListener("submit", (e) => {
     e.preventDefault();
-    
+
     const id = document.getElementById("trans-id").value;
     const type = document.querySelector('input[name="trans-type"]:checked').value;
     const title = document.getElementById("trans-title").value;
-    const amount = parseInt(document.getElementById("trans-amount").value);
+    const amountInput = document.getElementById("trans-amount");
+    const amount = getAmountValue(amountInput);
     const category = document.getElementById("trans-category").value;
     const date = document.getElementById("trans-date").value;
+
+    if (amount < 1) {
+        alert("Jumlah transaksi harus lebih dari 0.");
+        return;
+    }
 
     if (id) {
         // Edit existing transaction
@@ -1692,14 +1895,7 @@ document.getElementById("form-transaction").addEventListener("submit", (e) => {
         }
     }
     closeModal(modalOverlayTransactions);
-    
-    // Refresh all view grids
-    updateDashboardUI();
-    updateTransactionsUI();
-    updateBudgetsUI();
-    if (document.getElementById("laporan-tab").classList.contains("active")) {
-        renderCharts();
-    }
+    refreshAllUI();
 });
 
 // Edit Transaction handler (Global helper)
@@ -1710,7 +1906,7 @@ window.editTransaction = function(id) {
     // Fill form
     document.getElementById("trans-id").value = tx.id;
     document.getElementById("trans-title").value = tx.title;
-    document.getElementById("trans-amount").value = tx.amount;
+    setAmountValue(document.getElementById("trans-amount"), tx.amount);
     document.getElementById("trans-category").value = tx.category;
     document.getElementById("trans-date").value = tx.date;
     document.getElementById("transaction-modal-title").textContent = "Ubah Catatan Transaksi";
@@ -1736,12 +1932,7 @@ window.deleteTransaction = function(id) {
     if (confirm("Apakah Anda yakin ingin menghapus transaksi ini?")) {
         state.transactions = state.transactions.filter(t => t.id !== id);
         if (state.currentUser?.id) sbDeleteTransaction(id, state.currentUser.id);
-        updateDashboardUI();
-        updateTransactionsUI();
-        updateBudgetsUI();
-        if (document.getElementById("laporan-tab").classList.contains("active")) {
-            renderCharts();
-        }
+        refreshAllUI();
     }
 };
 
@@ -1749,8 +1940,7 @@ window.deleteTransaction = function(id) {
 window.editBudgetLimit = function(category) {
     document.getElementById("budget-category-id").value = category;
     document.getElementById("budget-category-display").textContent = category;
-    document.getElementById("budget-limit").value = state.budgets[category] || 0;
-    
+    setAmountValue(document.getElementById("budget-limit"), state.budgets[category] || 0);
     openModal(modalOverlayBudgets);
 };
 
@@ -1758,13 +1948,12 @@ window.editBudgetLimit = function(category) {
 document.getElementById("form-budget").addEventListener("submit", (e) => {
     e.preventDefault();
     const category = document.getElementById("budget-category-id").value;
-    const limit = parseInt(document.getElementById("budget-limit").value);
+    const limit = getAmountValue(document.getElementById("budget-limit"));
 
     state.budgets[category] = limit;
     if (state.currentUser?.id) sbSyncBudget(state.currentUser.id, category, limit);
     closeModal(modalOverlayBudgets);
 
-    // Refresh UI
     updateDashboardUI();
     updateBudgetsUI();
 });
@@ -1772,7 +1961,12 @@ document.getElementById("form-budget").addEventListener("submit", (e) => {
 // --- 3. Savings Goal Creation Modal Controls ---
 document.getElementById("btn-add-saving-goal").addEventListener("click", () => {
     document.getElementById("form-saving").reset();
-    document.getElementById("saving-deadline").value = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Default +30 days
+    document.getElementById("saving-deadline").value = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    // Clear formatted amount states
+    ['saving-target', 'saving-start'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.value = ""; el.dataset.rawValue = "0"; }
+    });
     openModal(modalOverlaySavings);
 });
 
@@ -1780,9 +1974,14 @@ document.getElementById("btn-add-saving-goal").addEventListener("click", () => {
 document.getElementById("form-saving").addEventListener("submit", (e) => {
     e.preventDefault();
     const name = document.getElementById("saving-name").value;
-    const target = parseInt(document.getElementById("saving-target").value);
+    const target = getAmountValue(document.getElementById("saving-target"));
     const deadline = document.getElementById("saving-deadline").value;
-    const initialAmt = parseInt(document.getElementById("saving-start").value) || 0;
+    const initialAmt = getAmountValue(document.getElementById("saving-start")) || 0;
+
+    if (target < 1000) {
+        alert("Target tabungan minimal Rp 1.000.");
+        return;
+    }
 
     const newGoal = {
         id: "sv-" + Date.now(),
@@ -1829,22 +2028,22 @@ window.openSavingActionModal = function(id, mode = "setor") {
     const helper = document.getElementById("saving-action-helper");
     const inputAmount = document.getElementById("saving-action-amount");
 
+    // Reset and store max data on input element
     inputAmount.value = "";
+    delete inputAmount.dataset.rawValue;
 
     if (mode === "setor") {
         title.textContent = "Setor ke Celengan";
         submitBtn.textContent = "Setor Uang";
         submitBtn.className = "btn btn-primary";
-        helper.textContent = "Uang akan diambil dari Saldo Utama Anda dan dimasukkan ke Celengan.";
-        // Set maximum possible deposit to remaining target
-        inputAmount.max = goal.target - goal.current;
+        helper.textContent = `Uang akan diambil dari Saldo Utama Anda. Maks: ${formatRupiah(goal.target - goal.current)}.`;
+        inputAmount.dataset.maxAllowed = goal.target - goal.current;
     } else {
         title.textContent = "Tarik dari Celengan";
         submitBtn.textContent = "Tarik Uang";
         submitBtn.className = "btn btn-outline-danger";
-        helper.textContent = "Uang akan dipindahkan dari Celengan kembali ke Saldo Utama Anda.";
-        // Set maximum possible withdrawal to current savings
-        inputAmount.max = goal.current;
+        helper.textContent = `Uang akan dikembalikan ke Saldo Utama Anda. Maks: ${formatRupiah(goal.current)}.`;
+        inputAmount.dataset.maxAllowed = goal.current;
     }
 
     openModal(modalOverlaySavingAction);
@@ -1855,7 +2054,9 @@ document.getElementById("form-saving-action").addEventListener("submit", (e) => 
     e.preventDefault();
     const id = document.getElementById("saving-action-id").value;
     const mode = document.getElementById("saving-action-mode").value;
-    const amount = parseInt(document.getElementById("saving-action-amount").value);
+    const amountInput = document.getElementById("saving-action-amount");
+    const amount = getAmountValue(amountInput);
+    const maxAllowed = parseInt(amountInput.dataset.maxAllowed || '0', 10);
 
     const goal = state.savings.find(s => s.id === id);
     if (!goal) return;
@@ -1863,6 +2064,8 @@ document.getElementById("form-saving-action").addEventListener("submit", (e) => 
     const financials = calculateFinancials();
 
     if (mode === "setor") {
+        if (amount < 1) { alert("Jumlah setoran harus lebih dari 0."); return; }
+
         // Check if main balance is sufficient
         if (amount > financials.mainBalance) {
             alert("Maaf, Saldo Utama Anda tidak mencukupi untuk melakukan setoran ini.");
@@ -1903,6 +2106,7 @@ document.getElementById("form-saving-action").addEventListener("submit", (e) => 
 
     } else {
         // Withdrawal mode
+        if (amount < 1) { alert("Jumlah penarikan harus lebih dari 0."); return; }
         if (amount > goal.current) {
             alert("Jumlah penarikan melebihi saldo celengan saat ini.");
             return;
@@ -1925,15 +2129,7 @@ document.getElementById("form-saving-action").addEventListener("submit", (e) => 
         if (state.currentUser?.id) sbSyncTransaction(state.currentUser.id, newTx);
     }
     closeModal(modalOverlaySavingAction);
-
-    // Refresh UI
-    updateDashboardUI();
-    updateTransactionsUI();
-    updateSavingsUI();
-    updateNotificationsUI();
-    if (document.getElementById("laporan-tab").classList.contains("active")) {
-        renderCharts();
-    }
+    refreshAllUI();
 });
 
 // ==========================================
@@ -2086,12 +2282,15 @@ function enterMainApplication() {
         mainAppContainer.style.display = "flex";
         mainAppContainer.style.opacity = "1";
         
-        // Re-render UI grids with logged-in user state data
+        // Re-render all UI pages with loaded user data
         updateDashboardUI();
         updateTransactionsUI();
         updateBudgetsUI();
         updateSavingsUI();
         updateNotificationsUI();
+        // E-Statement selects are static; just update the preview for current month
+        updateEStatementUI();
+        refreshIcons();
     }, 200);
 }
 
@@ -2134,7 +2333,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 3. Authentication Forms & Flow Init
     initAuth();
 
-    // 4. Init E-Statement period selects (populates month/year options)
+    // 4. Attach IDR formatters to all static amount inputs in modals
+    initAmountFormatters();
+
+    // 5. Init E-Statement period selects (populates month/year options, now inside Laporan)
     initEStatementSelects();
 
     // 5. Cek sesi Supabase aktif + validasi flag "Ingat Saya"
@@ -2162,6 +2364,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         updateBudgetsUI();
         updateSavingsUI();
         updateNotificationsUI();
+        updateEStatementUI();
+        refreshIcons();
     } else {
         // Tidak ada sesi, atau "Ingat Saya" tidak dicentang — tampil halaman login
         if (sessionUser && !hasActiveFlag) {
